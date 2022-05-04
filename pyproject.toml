@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "c12gl"
+version = "0.1.0"
+description = "Python Graph Neural Network Library for CLAS12"
+authors = ["Matthew McEneaney <matthew.mceneaney@duke.edu>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+numpy = "^1.22.3"
+awkward = "^1.8.0"
+matplotlib = "^3.5.2"
+dgl = "^0.8.0"
+torch = "^1.11.0"
+pytorch-ignite = "^0.4.9"
+optuna = "^2.10.0"
+hipopy = "^0.2.0"
+uproot = "^4.2.2"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
