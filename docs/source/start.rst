@@ -6,11 +6,11 @@ Getting Started
 Installation
 ------------
 
-To use Hipopy, first install it using pip:
+To use c12gl, first install it using pip:
 
 .. code-block:: console
 
-   $ pip install hipopy
+   $ pip install c12gl
 
 Or you can install from source following the 
-directions on the `GitHub page <https://github.com/mfmceneaney/hipopy.git>`_.
+directions on `GitHub <https://github.com/mfmceneaney/c12gl.git>`_.
