@@ -1,2 +1,3 @@
 # Ignore PyPi distributions
 *dist
+*c12gl/__pycache__
