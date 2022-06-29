@@ -10,7 +10,8 @@ import numpy.ma as ma
 import matplotlib.pyplot as plt
 
 # DGL Graph Learning Imports
-from dgl import save_graphs, load_graphs, batch
+import dgl #NOTE: for dgl.batch and dgl.unbatch
+from dgl import save_graphs, load_graphs
 from dgl.data import DGLDataset
 from dgl.dataloading import GraphDataLoader
 from dgl.data.utils import save_info, load_info, Subset
@@ -19,6 +20,7 @@ from dgl.data.utils import save_info, load_info, Subset
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.nn import DataParallel
 
 # PyTorch Ignite Imports
 from ignite.engine import Engine, Events, EventEnum, create_supervised_trainer, create_supervised_evaluator
@@ -223,6 +225,12 @@ def train(
         Default : "model"
     verbose : bool, optional
         Default : True
+
+    Returns
+    -------
+    logs : dict
+        Dictionary of training and validation metric lists organized by epoch
+
     
     Examples
     --------
@@ -439,6 +447,8 @@ def train(
     plt.xlabel('epoch')
     f.savefig(os.path.join(log_dir,'training_metrics_acc_'+datetime.datetime.now().strftime("%F")+"_"+dataset+"_nEps"+str(max_epochs)+'.png'))
 
+    return logs
+
 def train_dagnn(
     model,
     classifier,
@@ -502,6 +512,11 @@ def train_dagnn(
     verbose : bool, optional
         Default : True.
 
+    Returns
+    -------
+    logs : dict
+        Dictionary of training and validation metric lists organized by epoch
+
     Examples
     --------
 
@@ -533,9 +548,9 @@ def train_dagnn(
         # Ensure model is in training mode
         model.train()
 
-        # Get domain data
-        tgt = dom_train_set.__next__()
-        tgt = tgt.to(device)
+       # Get domain data
+       tgt = dom_train_set.__next__()[0] #NOTE: This returns [dgl.HeteroGraph,torch.tensor] for graph and labels.
+       tgt = tgt.to(device)
 
         # Get predictions and loss from data and labels
         x, label     = batch
@@ -547,8 +562,7 @@ def train_dagnn(
         x = dgl.unbatch(x)
         nLabelled   = len(x)
         nUnlabelled = len(tgt)
-        for el in dgl.unbatch(tgt): #NOTE: Append test domain data since concatenation doesn't work.
-            x.append(el)
+        x.extend(tgt)
         x = dgl.batch(x) #NOTE: Training and domain data must have the same schema for this to work.
 
         # Get hidden representation from model on training and domain data
@@ -556,8 +570,8 @@ def train_dagnn(
         
         # Step the domain discriminator on training and domain data
         dom_y = discriminator(h.detach())
-        dom_labels = torch.cat([[1 for i in range(nLabelled)], [0 for i in range(nUnlabelled)]], dim=0)#NOTE: Make sure domain label lengths match actual batches at the end.
-        dom_loss = bce(dom_y, dom_labels)
+        dom_labels = torch.cat([torch.ones(nLabelled,1), torch.zeros(nUnlabelled,1)], dim=0).to(device) #NOTE: Make sure domain label lengths match actual batches at the end.
+        dom_loss = dom_criterion(dom_y, dom_labels)
         discriminator.zero_grad()
         dom_loss.backward()
         discriminator_optimizer.step()
@@ -585,28 +599,28 @@ def train_dagnn(
         model_optimizer.step()
 
         # Apply softmax and get accuracy on training data
-        train_true_y = train_labels.clone().detach().float().view(-1, 1) 
+        train_true_y = train_labels.clone().detach().float().view(-1, 1) #NOTE: Labels for cross entropy loss have to be (N) shaped if input is (N,C) shaped.
         train_probs_y = torch.softmax(train_y, 1)
-        train_argmax_y = torch.max(probs_y, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
+        train_argmax_y = torch.max(train_probs_y, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
         train_acc = (train_true_y == train_argmax_y.float()).sum().item() / len(train_true_y)
 
         # Apply softmax and get accuracy on domain data
         dom_true_y = dom_labels.clone().detach().float().view(-1, 1) 
-        dom_probs_y = torch.softmax(dom_y, 1)
-        dom_argmax_y = torch.max(probs_y, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
+        # dom_probs_y = torch.softmax(dom_y, 1) #NOTE: Activation should already be a part of the discriminator
+        dom_argmax_y = torch.max(dom_y, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
         dom_acc = (dom_true_y == dom_argmax_y.float()).sum().item() / len(dom_true_y)
 
         return {
                 'train_y': train_y, #CLASSIFIER OUTPUT
-                'train_true_y': train_true_y,
+                'train_true_y': train_labels, #NOTE: Need these labels for some reason.
                 'train_argmax_y': train_argmax_y,
                 'train_loss': train_loss.detach().item(),
-                'train_acc': train_acc,
+                'train_accuracy': train_acc,
                 'dom_y': dom_y, #DISCRIMINATOR OUTPUT
-                'dom_true_y': dom_true_y,
+                'dom_true_y': dom_labels, #NOTE: Need these labels for some reason.
                 'dom_argmax_y': dom_argmax_y,
                 'dom_loss': dom_loss.detach().item(),
-                'dom_acc': dom_acc,
+                'dom_accuracy': dom_acc,
                 'tot_loss': tot_loss.detach().item() #TOTAL LOSS
                 }
 
@@ -619,7 +633,7 @@ def train_dagnn(
         with torch.no_grad(): #NOTE: Important to call both model.eval and with torch.no_grad()! See https://stackoverflow.com/questions/55627780/evaluating-pytorch-models-with-torch-no-grad-vs-model-eval.
             
             # Get domain data
-            tgt = dom_val_set.__next__()
+            tgt = dom_val_set.__next__()[0] #NOTE: This returns [dgl.HeteroGraph,torch.tensor] for graph and labels.
             tgt = tgt.to(device)
 
             # Get predictions and loss from data and labels
@@ -632,8 +646,7 @@ def train_dagnn(
             x = dgl.unbatch(x)
             nLabelled   = len(x)
             nUnlabelled = len(tgt)
-            for el in dgl.unbatch(tgt): #NOTE: Append test domain data since concatenation doesn't work.
-                x.append(el)
+            x.extend(tgt)
             x = dgl.batch(x) #NOTE: Training and domain data must have the same schema for this to work.
 
             # Get hidden representation from model on training and domain data
@@ -641,8 +654,8 @@ def train_dagnn(
             
             # Step the domain discriminator on training and domain data
             dom_y = discriminator(h.detach())
-            dom_labels = torch.cat([[1 for i in range(nLabelled)], [0 for i in range(nUnlabelled)]], dim=0) #NOTE: Make sure domain label lengths match actual batches at the end.
-            dom_loss = bce(dom_y, dom_labels)
+            dom_labels = torch.cat([torch.ones(nLabelled,1), torch.zeros(nUnlabelled,1)], dim=0).to(device) #NOTE: Make sure domain label lengths match actual batches at the end.
+            dom_loss = dom_criterion(dom_y, dom_labels)
             
             # Step the classifier on training data
             train_y = classifier(h[:nLabelled]) #NOTE: Only evaluate on labelled (i.e., training) data, not domain data.
@@ -655,28 +668,28 @@ def train_dagnn(
             tot_loss = train_loss - coeff * dom_loss
 
             # Apply softmax and get accuracy on training data
-            train_true_y = train_labels.clone().detach().float().view(-1, 1) 
+            train_true_y = train_labels.clone().detach().float().view(-1, 1) #NOTE: Labels for cross entropy loss have to be (N) shaped if input is (N,C) shaped.
             train_probs_y = torch.softmax(train_y, 1)
-            train_argmax_y = torch.max(probs_y, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
+            train_argmax_y = torch.max(train_probs_y, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
             train_acc = (train_true_y == train_argmax_y.float()).sum().item() / len(train_true_y)
 
             # Apply softmax and get accuracy on domain data
             dom_true_y = dom_labels.clone().detach().float().view(-1, 1) 
-            dom_probs_y = torch.softmax(dom_y, 1)
-            dom_argmax_y = torch.max(probs_y, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
+            # dom_probs_y = torch.softmax(dom_y, 1) #NOTE: Activation should already be a part of the discriminator
+            dom_argmax_y = torch.max(dom_y, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
             dom_acc = (dom_true_y == dom_argmax_y.float()).sum().item() / len(dom_true_y)
 
         return {
                 'train_y': train_y, #CLASSIFIER OUTPUT
-                'train_true_y': train_true_y,
+                'train_true_y': train_labels, #NOTE: Need these labels for some reason.
                 'train_argmax_y': train_argmax_y,
                 'train_loss': train_loss.detach().item(),
-                'train_acc': train_acc,
+                'train_accuracy': train_acc,
                 'dom_y': dom_y, #DISCRIMINATOR OUTPUT
-                'dom_true_y': dom_true_y,
+                'dom_true_y': dom_labels, #NOTE: Need these labels for some reason.
                 'dom_argmax_y': dom_argmax_y,
                 'dom_loss': dom_loss.detach().item(),
-                'dom_acc': dom_acc,
+                'dom_accuracy': dom_acc,
                 'tot_loss': tot_loss.detach().item() #TOTAL LOSS
                 }
 
@@ -684,20 +697,20 @@ def train_dagnn(
     trainer = Engine(train_step)
 
     # Add training metrics for classifier
-    train_accuracy  = Accuracy(output_transform=lambda x: [x['train_y'], x['train_true_y']])
+    train_accuracy  = Accuracy(output_transform=lambda x: [x['train_probs_y'], x['train_true_y']])
     train_accuracy.attach(trainer, 'train_accuracy')
     train_loss      = Loss(train_criterion,output_transform=lambda x: [x['train_y'], x['train_true_y']])
     train_loss.attach(trainer, 'train_loss')
-    train_roc_auc   = ROC_AUC(output_transform=lambda x: [x['train_y'], x['train_true_y']])
-    train_roc_auc.attach(trainer,'train_roc_auc')
+    # train_roc_auc   = ROC_AUC(output_transform=lambda x: [x['train_probs_y'], x['train_true_y']]) #NOTE: ROC_AUC CURRENTLY NOT WORKING HERE, NOT SURE WHY...
+    # train_roc_auc.attach(trainer,'train_roc_auc')
 
     # Add training metrics for discriminator
-    dom_accuracy  = Accuracy(output_transform=lambda x: [x['dom_y'], x['dom_true_y']])
+    dom_accuracy  = Accuracy(output_transform=lambda x: [x['dom_argmax_y'], x['dom_true_y']])
     dom_accuracy.attach(trainer, 'dom_accuracy')
     dom_loss      = Loss(dom_criterion,output_transform=lambda x: [x['dom_y'], x['dom_true_y']])
     dom_loss.attach(trainer, 'dom_loss')
-    dom_roc_auc   = ROC_AUC(output_transform=lambda x: [x['dom_y'], x['dom_true_y']])
-    dom_roc_auc.attach(trainer,'dom_roc_auc')
+    # dom_roc_auc   = ROC_AUC(output_transform=lambda x: [x['dom_argmax_y'], x['dom_true_y']]) #NOTE: ROC_AUC CURRENTLY NOT WORKING HERE, NOT SURE WHY...
+    # dom_roc_auc.attach(trainer,'dom_roc_auc')
 
     # Create evaluator
     evaluator = Engine(val_step)
@@ -707,20 +720,20 @@ def train_dagnn(
     _train_accuracy.attach(evaluator, 'train_accuracy')
     _train_loss      = Loss(train_criterion,output_transform=lambda x: [x['train_y'], x['train_true_y']])
     _train_loss.attach(evaluator, 'train_loss')
-    _train_roc_auc   = ROC_AUC(output_transform=lambda x: [x['train_y'], x['train_true_y']])
-    _train_roc_auc.attach(evaluator,'train_roc_auc')
+    # _train_roc_auc   = ROC_AUC(output_transform=lambda x: [x['train_y'], x['train_true_y']]) #NOTE: ROC_AUC CURRENTLY NOT WORKING HERE, NOT SURE WHY...
+    # _train_roc_auc.attach(evaluator,'train_roc_auc')
 
     # Add training metrics for discriminator
-    _dom_accuracy  = Accuracy(output_transform=lambda x: [x['dom_y'], x['dom_true_y']])
+    _dom_accuracy  = Accuracy(output_transform=lambda x: [x['dom_argmax_y'], x['dom_true_y']])
     _dom_accuracy.attach(evaluator, 'dom_accuracy')
     _dom_loss      = Loss(dom_criterion,output_transform=lambda x: [x['dom_y'], x['dom_true_y']])
     _dom_loss.attach(evaluator, 'dom_loss')
-    _dom_roc_auc   = ROC_AUC(output_transform=lambda x: [x['dom_y'], x['dom_true_y']])
-    _dom_roc_auc.attach(evaluator,'dom_roc_auc')
+    # _dom_roc_auc   = ROC_AUC(output_transform=lambda x: [x['dom_argmax_y'], x['dom_true_y']]) #NOTE: ROC_AUC CURRENTLY NOT WORKING HERE, NOT SURE WHY...
+    # _dom_roc_auc.attach(evaluator,'dom_roc_auc')
 
     # Set up early stopping
     def score_function(engine):
-        val_loss = engine.state.metrics['loss'] #TODO: Select manually which metric?
+        val_loss = engine.state.metrics['train_loss'] #TODO: Select manually which metric?
         return -val_loss
 
     handler = EarlyStopping(
@@ -809,9 +822,9 @@ def train_dagnn(
         torch.save(model.to('cpu').state_dict(), os.path.join(log_dir,save_path+'_model_weights')) #NOTE: Save to cpu state so you can test more easily.
         torch.save(classifier.to('cpu').state_dict(), os.path.join(log_dir,save_path+'_classifier_weights'))
         torch.save(discriminator.to('cpu').state_dict(), os.path.join(log_dir,save_path+'_discriminator_weights'))
-        torch.save(model.to('cpu'), os.path.join(log_dir,save_path+'_model')) #NOTE: Save to cpu state so you can test more easily.
-        torch.save(classifier.to('cpu'), os.path.join(log_dir,save_path+'_classifier'))
-        torch.save(discriminator.to('cpu'), os.path.join(log_dir,save_path+'_discriminator'))
+        # torch.save(model.to('cpu'), os.path.join(log_dir,save_path+'_model')) #NOTE: Save to cpu state so you can test more easily.
+        # torch.save(classifier.to('cpu'), os.path.join(log_dir,save_path+'_classifier'))
+        # torch.save(discriminator.to('cpu'), os.path.join(log_dir,save_path+'_discriminator'))
 
     # Create training/validation loss plot
     f = plt.figure()
@@ -839,6 +852,8 @@ def train_dagnn(
     plt.ylabel('accuracy')
     plt.xlabel('epoch')
     f.savefig(os.path.join(log_dir,'training_metrics_acc_'+datetime.datetime.now().strftime("%F")+"_"+dataset+"_nEps"+str(max_epochs)+'.png'))
+
+    return logs
 
 #------------------------- Classes -------------------------#
 # GraphDataset
