@@ -1,7 +1,7 @@
-Hipopy module
+c12gl module
 =============
 
-.. automodule:: hipopy
+.. automodule:: c12gl
     :members:
     :undoc-members:
     :show-inheritance:

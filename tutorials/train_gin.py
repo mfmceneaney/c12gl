@@ -3,9 +3,6 @@
 # Author: Matthew McEneaney
 #--------------------------------------------------#
 
-# Data imports
-import numpy as np
-
 # PyTorch Imports
 import torch
 import torch.nn as nn
@@ -29,12 +26,8 @@ def main():
     # Basic training options
     parser.add_argument('--dataset', type=str, default="dataset",
                         help='name of dataset (default: dataset)') #NOTE: Needs to be in ~/.dgl or specify prefix
-    parser.add_argument('--dom_dataset', type=str, default="dom_dataset",
-                        help='name of domain dataset (default: dom_dataset)') #NOTE: Needs to be in ~/.dgl or specify prefix
     parser.add_argument('--prefix', type=str, default='',
                         help='Prefix for where dataset is stored (default: ~/.dgl/)')
-    parser.add_argument('--dom_prefix', type=str, default='',
-                        help='Prefix for where domain dataset is stored (default: ~/.dgl/)')
     parser.add_argument('--split', type=float, default=0.75,
                         help='Fraction of dataset to use for evaluation (default: 0.75)')
     parser.add_argument('--max_events', type=float, default=1e5,
@@ -106,46 +99,25 @@ def main():
                                                     split=args.split, max_events=args.max_events,
                                                     num_workers=args.nworkers, batch_size=args.batch)
 
-    dom_train_loader, dom_val_loader, dom_nclasses, dom_nfeatures_node, dom_nfeatures_edge = load_graph_dataset(dataset=args.dom_dataset, prefix=args.dom_prefix, 
-                                                    split=args.split, max_events=args.max_events,
-                                                    num_workers=args.nworkers, batch_size=args.batch)
-
-    # Check that # classes and data dimensionality at nodes and edges match between training and domain data
-    if nclasses!=dom_nclasses or nfeatures_node!=dom_nfeatures_node or nfeatures_edge!=dom_nfeatures_edge:
-        print("*** ERROR *** mismatch between graph structure for domain and training data!")
-        print("EXITING...")
-        return
-
-    # Create models
-    n_domains = 2
+    # Create model
     nfeatures = nfeatures_node
     model = GIN(args.nlayers, args.nmlp, nfeatures,
-            args.hdim, args.hdim, args.dropout, args.learn_eps, args.npooling,
+            args.hdim, nclasses, args.dropout, args.learn_eps, args.npooling,
             args.gpooling).to(device)
-    classifier = MLP(args.nmlp, args.hdim, args.hdim, nclasses).to(device)
-    discriminator = MLP(args.nmlp, args.hdim, args.hdim, n_domains).to(device)
 
-    # Create Optimizers
-    model_optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    classifier_optimizer = optim.Adam(classifier.parameters(), lr=args.lr)
-    discriminator_optimizer = optim.Adam(discriminator.parameters(), lr=args.lr)
+    # Create optimizer
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     # Create lr scheduler
-    model_scheduler = optim.lr_scheduler.ReduceLROnPlateau(model_optimizer, mode='min', factor=args.gamma, patience=args.patience,
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.gamma, patience=args.patience,
         threshold=args.thresh, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=args.verbose)
     if args.step==0:
-        model_scheduler = optim.lr_scheduler.ExponentialLR(model_optimizer, args.gamma, last_epoch=-1, verbose=args.verbose)
+        scheduler = optim.lr_scheduler.ExponentialLR(optimizer, args.gamma, last_epoch=-1, verbose=args.verbose)
     if args.step>0:
-        model_scheduler = optim.lr_scheduler.StepLR(model_optimizer, step_size=args.step, gamma=args.gamma, verbose=args.verbose)
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.step, gamma=args.gamma, verbose=args.verbose)
 
-    # Create loss functions
-    train_criterion = nn.CrossEntropyLoss()
-    dom_criterion   = nn.BCELoss()
-
-    # Set lambda function for coefficient on domain discriminator loss
-    def lambda_function(epoch, max_epochs):
-        p = epoch / max_epochs
-        return 2. / (1.+np.exp(-10.*p)) - 1.
+    # Create loss function
+    criterion = nn.CrossEntropyLoss()
 
     # Setup log directory
     try: os.makedirs(args.log)
@@ -154,23 +126,15 @@ def main():
     # Train model
     train_dagnn(
         model,
-        classifier,
-        discriminator,
         device,
         train_loader,
         val_loader,
-        dom_train_loader,
-        dom_val_loader,
-        model_optimizer,
-        classifier_optimizer,
-        discriminator_optimizer,
-        model_scheduler,
+        optimizer,
+        scheduler,
         args.patience,
         args.min_delta,
         args.cumulative_delta,
-        train_criterion,
-        dom_criterion,
-        lambda_function,
+        criterion,
         args.epochs,
         dataset=args.dataset,
         prefix=args.prefix,

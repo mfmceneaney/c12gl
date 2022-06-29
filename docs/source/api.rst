@@ -4,4 +4,4 @@ API
 .. autosummary::
    :toctree: generated
 
-   hipopy
+   c12gl

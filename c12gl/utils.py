@@ -457,7 +457,7 @@ def train_dagnn(
     cumulative_delta,
     train_criterion,
     dom_criterion,
-    # lambda_function,#TODO: Commented out for DEBUGGING
+    lambda_function,
     max_epochs,
     dataset="",
     prefix="",
@@ -522,11 +522,6 @@ def train_dagnn(
     # Logs for matplotlib plots
     logs={'train':{'train_loss':[],'train_accuracy':[],'train_roc_auc':[],'dom_loss':[],'dom_accuracy':[],'dom_roc_auc':[]},
             'val':{'train_loss':[],'train_accuracy':[],'train_roc_auc':[],'dom_loss':[],'dom_accuracy':[],'dom_roc_auc':[]}}
-
-    # Function to decrease lambda with epoch #TODO: Set this from the arguments.
-    def lambda_function(epoch, max_epochs):
-        p = epoch / max_epochs
-        return 2. / (1+np.exp(-10.*p)) - 1.
 
     # Continuously sample target domain data for training and validation
     dom_train_set = itertools.cycle(dom_train_loader)
