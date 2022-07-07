@@ -4,4 +4,4 @@ API
 .. autosummary::
    :toctree: generated
 
-   c12gl
+   c12gl.preprocessing
