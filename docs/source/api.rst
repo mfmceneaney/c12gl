@@ -1,7 +1,7 @@
 API
 ===
 
-.. automodule:: c12gl
-    :members:
-    :undoc-members:
-    :show-inheritance:
+.. autosummary::
+   :toctree: generated
+
+   c12gl
