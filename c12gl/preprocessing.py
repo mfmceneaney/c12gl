@@ -1,5 +1,5 @@
 #--------------------------------------------------#
-# Description: Model definitions and classes.
+# Description: Data preprocessing help
 # Author: Matthew McEneaney
 #--------------------------------------------------#
 
@@ -22,12 +22,16 @@ import hipopy.hipopy as hipopy
 #------------------------- Functions: -------------------------#
 # normalize
 
-def normalize(arr,index=-2,log=False,inplace=False):
+def normalize(arr,mean=None,std=None,index=-2,log=False,inplace=False):
     """
     Parameters
     ----------
     arr : numpy.ma.array, required
-        Input 2D ma.array to normalize
+        Input 2D ma.array to normalize event by event
+    mean : float, optional
+        Mean to which to normalize events
+    std : float, optional
+        Standard deviation to which to normalize events
     index : int, optional
         Index along which to normalize, NOTE: Fixed for now.
     log : bool, optional
@@ -38,35 +42,78 @@ def normalize(arr,index=-2,log=False,inplace=False):
     Returns
     -------
     newarr : numpy.ma.array
-        Normalized array
+        Event normalized 2D array
 
     Description
     -----------
-    Normalizes input array to difference from mean divided by
-    standard deviation.  Optionally takes log of distribution
+    Normalizes input array to difference from event mean divided by
+    standard deviation. Mean and standard deviation may also be 
+    statically specified. Optionally takes log of distribution
     before normalization.
     """
     newarr = arr.copy() if not inplace else arr #TODO: Fix this so it's along an arbitrary index.
-    if type(newarr)==ma.core.MaskedArray:
+
+    # Custom mean and stddev case
+    if mean is not None and std is not None:
+        if std == 0.0: raise ValueError
         for idx in range(len(newarr)):
             if len(newarr[idx]==0): continue
             if log: newarr[idx] = np.log(idx)
+            newarr[idx] = (newarr[idx]-mean)/std
+
+    # Masked array case
+    elif type(newarr)==ma.core.MaskedArray:
+        for idx in range(len(newarr)):
+            if len(newarr[idx])==0: continue
+            if log: newarr[idx] = np.log(idx)
             if not ma.all(newarr[idx].mask) and newarr[idx].std()!=0.0:
                 newarr[idx] = (newarr[idx]-newarr[idx].mean())/newarr[idx].std()
+
+    # Generic numpy array or list case
     elif type(newarr)==np.ndarray or type(newarr)==list:
         for idx in range(len(newarr)):
-            if len(newarr[idx]==0): continue
+            if len(newarr[idx])==0: continue
             if log: newarr[idx] = np.log(idx)
             if np.std(newarr[idx])!=0.0:
                 newarr[idx] = (newarr[idx]-np.mean(newarr[idx]))/np.std(newarr[idx])
     return newarr
 
 #------------------------- Classes: -------------------------#
-# Preprocessor
-# Constructor (Creates Graphs from preprocessed arrays) #NOTE: This might need to be too custom...not sure yet...
-# Evaluator # Similar to preprocessor except in append mode and you pass model to it and write predictions or append to input file...
+# Preprocessor, PreprocessorIterator
 
-#---------- Preprocessor ----------#
+# class Constructor:
+#     """
+#     Description
+#     -----------
+#     ...
+
+#     Attributes
+#     ----------
+#     ...
+
+#     Methods
+#     -------
+#     ...
+#     """
+#     def __init__(self,n_nodes=0,bidirected=True,keys=[]):
+#         self.n_nodes = n_nodes
+#         self.bidirected = bidirected
+#         self.keys = keys
+
+#     def addNode():
+#         pass
+
+#     def createGraphs(batch):
+#         data = [ batch[key] for key in self.keys ]
+
+    
+# def createBankGraph(batch):
+#     for idx in range(len(batch["REC::Particle_px"])):
+#         counter += 1
+#         nomask = batch["REC::Particle_px"][idx].count()
+#         if nomask<2
+    
+
 class Preprocessor:
     """
     Description
@@ -374,14 +421,7 @@ class PreprocessorIterator:
     def __next__(self):
         try:
             batch = self.iterator.__next__()
-            # print("DEBUGGING: in PreprocessorIterator: batch = \n",batch)#DEBUGGING
-            # print("DEBUGGING: np.shape(batch[REC::Particle_px][1]) = ",np.shape(batch["REC::Particle_px"][1]))#DEBUGGING
             return self.preprocessor.process(batch)
         except StopIteration: #NOTE: #TODO: Not sure but maybe could just forget the try block since self.iterator.__next__() will already raise the StopIteration exception
             raise StopIteration
-
-#---------- DEBUGGING BELOW ----------#
-if __name__=="__main__":
-    p = Preprocessor()
-    print(p)
         
