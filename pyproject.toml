@@ -6,7 +6,7 @@ authors = ["Matthew McEneaney <matthew.mceneaney@duke.edu>"]
 license = "MIT"
 
 [tool.poetry.dependencies]
-python = "^3.7.3"
+python = "^3.9"
 awkward = "^1.8.0"
 numpy = "^1.19.5"
 matplotlib = "^3.4.2"
@@ -20,5 +20,5 @@ uproot = "^4.3.3"
 [tool.poetry.dev-dependencies]
 
 [build-system]
-requires = ["poetry>=0.12", "rtd-poetry"]
-build-backend = "rtd_poetry"
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
