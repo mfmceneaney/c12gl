@@ -1,0 +1,9 @@
+numpy
+awkward
+matplotlib
+dgl
+torch
+pytorch-ignite
+optuna
+hipopy
+uproot
