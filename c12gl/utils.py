@@ -231,7 +231,6 @@ def train(
     logs : dict
         Dictionary of training and validation metric lists organized by epoch
 
-    
     Examples
     --------
 
@@ -421,8 +420,8 @@ def train(
     trainer.run(train_loader, max_epochs=max_epochs)
     tb_logger.close() #IMPORTANT!
     if save_path!="":
-        torch.save(model.to('cpu').state_dict(), os.path.join(log_dir,save_path+"_weights")) #NOTE: Save to cpu state so you can test more easily.
-        torch.save(model.to('cpu'), os.path.join(log_dir,save_path)) #NOTE: Save to cpu state so you can test more easily.
+        torch.save(model.to('cpu').state_dict(), os.path.join(log_dir,save_path+"_state_dict")) #NOTE: Save to cpu state so you can test more easily.
+        # torch.save(model.to('cpu'), os.path.join(log_dir,save_path)) #NOTE: Save to cpu state so you can test more easily.
    
     # Create training/validation loss plot
     f = plt.figure()
@@ -560,6 +559,7 @@ def train_dagnn(
 
         # Concatenate classification data and domain data
         x = dgl.unbatch(x)
+        tgt = dgl.unbatch(tgt)
         nLabelled   = len(x)
         nUnlabelled = len(tgt)
         x.extend(tgt)
@@ -611,6 +611,7 @@ def train_dagnn(
         dom_acc = (dom_true_y == dom_argmax_y.float()).sum().item() / len(dom_true_y)
 
         return {
+                'lambda' : coeff,
                 'train_y': train_y, #CLASSIFIER OUTPUT
                 'train_true_y': train_labels, #NOTE: Need these labels for some reason.
                 'train_argmax_y': train_argmax_y,
@@ -644,6 +645,7 @@ def train_dagnn(
 
             # Concatenate classification data and domain data
             x = dgl.unbatch(x)
+            tgt = dgl.unbatch(tgt)
             nLabelled   = len(x)
             nUnlabelled = len(tgt)
             x.extend(tgt)
@@ -680,6 +682,7 @@ def train_dagnn(
             dom_acc = (dom_true_y == dom_argmax_y.float()).sum().item() / len(dom_true_y)
 
         return {
+                'lambda' : coeff,
                 'train_y': train_y, #CLASSIFIER OUTPUT
                 'train_true_y': train_labels, #NOTE: Need these labels for some reason.
                 'train_argmax_y': train_argmax_y,
@@ -715,7 +718,7 @@ def train_dagnn(
     # Create evaluator
     evaluator = Engine(val_step)
 
-    # Add training metrics for classifier
+    # Add validation metrics for classifier
     _train_accuracy  = Accuracy(output_transform=lambda x: [x['train_y'], x['train_true_y']])
     _train_accuracy.attach(evaluator, 'train_accuracy')
     _train_loss      = Loss(train_criterion,output_transform=lambda x: [x['train_y'], x['train_true_y']])
@@ -723,7 +726,7 @@ def train_dagnn(
     # _train_roc_auc   = ROC_AUC(output_transform=lambda x: [x['train_y'], x['train_true_y']]) #NOTE: ROC_AUC CURRENTLY NOT WORKING HERE, NOT SURE WHY...
     # _train_roc_auc.attach(evaluator,'train_roc_auc')
 
-    # Add training metrics for discriminator
+    # Add validation metrics for discriminator
     _dom_accuracy  = Accuracy(output_transform=lambda x: [x['dom_argmax_y'], x['dom_true_y']])
     _dom_accuracy.attach(evaluator, 'dom_accuracy')
     _dom_loss      = Loss(dom_criterion,output_transform=lambda x: [x['dom_y'], x['dom_true_y']])
