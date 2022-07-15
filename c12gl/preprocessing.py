@@ -5,9 +5,10 @@
 
 from __future__ import absolute_import, division, print_function
 
-# NumPy Imports
+# NumPy/Awkward Array Imports
 import numpy as np
 import numpy.ma as ma
+import awkward as ak
 
 # Deep Graph Learning Imports
 import dgl
