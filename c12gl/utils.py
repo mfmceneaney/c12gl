@@ -20,7 +20,9 @@ from dgl.data.utils import save_info, load_info, Subset
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.nn import DataParallel
+# import torch.distributed as dist
+# import torch.multiprocessing as mp
+# from torch.nn.parallel import DistributedDataParallel as DDP
 
 # PyTorch Ignite Imports
 from ignite.engine import Engine, Events, EventEnum, create_supervised_trainer, create_supervised_evaluator
@@ -781,7 +783,7 @@ def train_dagnn(
         for metric in metrics.keys(): logs['val'][metric].append(metrics[metric])
         if verbose: print(f"Validation Results - Epoch: {trainer.state.epoch}  Avg classifier loss: {metrics['train_loss']:.4f} Avg classifier accuracy: {metrics['train_accuracy']:.4f}")
 
-    # Create a TensorBoard logger
+    # Create a TensorBoard logger #TODO: EVALUATE WHETHER TO KEEP THIS!!!
     tb_logger = TensorboardLogger(log_dir=log_dir)
 
     # Attach the logger to the trainer to log training loss at each iteration
@@ -829,7 +831,7 @@ def train_dagnn(
         # torch.save(classifier.to('cpu'), os.path.join(log_dir,save_path+'_classifier'))
         # torch.save(discriminator.to('cpu'), os.path.join(log_dir,save_path+'_discriminator'))
 
-    # Create training/validation loss plot
+    # Create training/validation loss plot #TODO: EVALUATE WHETHER TO KEEP THIS!!!
     f = plt.figure()
     plt.subplot()
     plt.title('Loss per epoch')
