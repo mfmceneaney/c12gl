@@ -126,6 +126,8 @@ def getRingGraph(nNodes,idcs=None):
     # Get directional graph
     graph = dgl.graph((l1,l2))
 
+    return graph
+
 def getWebGraph(nNodes,idcs=None):
     """
     Parameters
@@ -152,6 +154,8 @@ def getWebGraph(nNodes,idcs=None):
 
     # Get directional graph
     graph = dgl.graph((l1,l2))
+
+    return graph
 
 #------------------------- Classes: -------------------------#
 # Preprocessor, PreprocessorIterator, Constructor
