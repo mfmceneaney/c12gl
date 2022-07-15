@@ -175,7 +175,7 @@ class Constructor:
     def __init__(self,construct=None):
         self.construct = construct
 
-    def getDataTensor(batch,keys): #TODO: Put in constructor object
+    def getDataTensor(self,batch,keys): #TODO: Put in constructor object
         """
         Parameters
         ----------
@@ -192,7 +192,7 @@ class Constructor:
         """
         return np.moveaxis(np.array([batch[key] for key in keys]),(0,1,2),(2,0,1))
 
-    def setConstruct(construct):
+    def setConstruct(self,construct):
         """
         Parameters
         ----------
@@ -206,7 +206,7 @@ class Constructor:
         """
         self.construct = construct
 
-    def getConstruct():
+    def getConstruct(self):
         """
         Returns
         -------
@@ -220,7 +220,7 @@ class Constructor:
         """
         return self.construct
         
-    def getGraphs(datatensor):
+    def getGraphs(self,datatensor):
         """
         Parameters
         ----------
