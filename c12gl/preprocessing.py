@@ -19,10 +19,13 @@ import torch
 import uproot
 import hipopy.hipopy as hipopy
 
-#------------------------- Functions: -------------------------#
-# normalize
+#TODO: Check method names and attribute names and make sure camelBack vs. _ convention is consistent
+#TODO: Check doc strings
 
-def normalize(arr,mean=None,std=None,index=-2,log=False,inplace=False):
+#------------------------- Functions: -------------------------#
+# normalize, getRingGraph, getWebGraph
+
+def normalize(arr,mean=None,std=None,max=False,index=-2,log=False,inplace=False):
     """
     Parameters
     ----------
@@ -32,6 +35,8 @@ def normalize(arr,mean=None,std=None,index=-2,log=False,inplace=False):
         Mean to which to normalize events
     std : float, optional
         Standard deviation to which to normalize events
+    max : bool, optional
+        Whether to normalize to maximum deviation from event mean
     index : int, optional
         Index along which to normalize, NOTE: Fixed for now.
     log : bool, optional
@@ -47,7 +52,7 @@ def normalize(arr,mean=None,std=None,index=-2,log=False,inplace=False):
     Description
     -----------
     Normalizes input array to difference from event mean divided by
-    standard deviation. Mean and standard deviation may also be 
+    standard deviation or maximum deviation. Mean and standard deviation may also be 
     statically specified. Optionally takes log of distribution
     before normalization.
     """
@@ -59,60 +64,186 @@ def normalize(arr,mean=None,std=None,index=-2,log=False,inplace=False):
         for idx in range(len(newarr)):
             if len(newarr[idx]==0): continue
             if log: newarr[idx] = np.log(idx)
-            newarr[idx] = (newarr[idx]-mean)/std
+            newarr[idx] = (newarr[idx]-mean)/std #TODO: COMBOS OF STATIC MEAN DYNAMIC STD ETC.
 
-    # Masked array case
-    elif type(newarr)==ma.core.MaskedArray:
-        for idx in range(len(newarr)):
-            if len(newarr[idx])==0: continue
-            if log: newarr[idx] = np.log(idx)
-            if not ma.all(newarr[idx].mask) and newarr[idx].std()!=0.0:
-                newarr[idx] = (newarr[idx]-newarr[idx].mean())/newarr[idx].std()
+    # Normalize maximum deviation case
+    elif max:
+        # Masked array case
+        if type(newarr)==ma.core.MaskedArray:
+            for idx in range(len(newarr)):
+                if len(newarr[idx])==0: continue
+                if log: newarr[idx] = np.log(idx)
+                if not ma.all(newarr[idx].mask) and newarr[idx].std()!=0.0:
+                    newarr[idx] = (newarr[idx]-newarr[idx].mean())/np.abs(newarr[idx].std()-newarr[idx].mean())
 
-    # Generic numpy array or list case
-    elif type(newarr)==np.ndarray or type(newarr)==list:
-        for idx in range(len(newarr)):
-            if len(newarr[idx])==0: continue
-            if log: newarr[idx] = np.log(idx)
-            if np.std(newarr[idx])!=0.0:
-                newarr[idx] = (newarr[idx]-np.mean(newarr[idx]))/np.std(newarr[idx])
+        # Generic numpy array or list case
+        elif type(newarr)==np.ndarray or type(newarr)==list:
+            for idx in range(len(newarr)):
+                if len(newarr[idx])==0: continue
+                if log: newarr[idx] = np.log(idx)
+                if np.std(newarr[idx])!=0.0:
+                    newarr[idx] = (newarr[idx]-np.mean(newarr[idx]))/np.abs(np.std(newarr[idx])-np.mean(newarr[idx]))
+
+    # Normalize to standard deviation case
+    else:
+        # Masked array case
+        if type(newarr)==ma.core.MaskedArray:
+            for idx in range(len(newarr)):
+                if len(newarr[idx])==0: continue
+                if log: newarr[idx] = np.log(idx)
+                if not ma.all(newarr[idx].mask) and newarr[idx].std()!=0.0:
+                    newarr[idx] = (newarr[idx]-newarr[idx].mean())/newarr[idx].std()
+
+        # Generic numpy array or list case
+        elif type(newarr)==np.ndarray or type(newarr)==list:
+            for idx in range(len(newarr)):
+                if len(newarr[idx])==0: continue
+                if log: newarr[idx] = np.log(idx)
+                if np.std(newarr[idx])!=0.0:
+                    newarr[idx] = (newarr[idx]-np.mean(newarr[idx]))/np.std(newarr[idx])
+
     return newarr
 
+def getRingGraph(nNodes,idcs=None):
+    """
+    Parameters
+    ----------
+    nNodes : int, required
+        Number of nodes in graph
+    idcs : list, optional
+        List of specific indices to use
+
+    Description
+    -----------
+    Generates a ring graph structure from a given number 
+    of nodes or a list of specific indices.
+    """
+    l1 = idcs if idcs is not None else [k for k in range(nNodes)]
+    l2 = l1[1:]
+    l2.append(l1[0])
+
+    # Get directional graph
+    graph = dgl.graph((l1,l2))
+
+def getWebGraph(nNodes,idcs=None):
+    """
+    Parameters
+    ----------
+    nNodes : int, required
+        Number of nodes in graph
+    idcs : list, optional
+        List of specific indices to use
+
+    Description
+    -----------
+    Generates a fully connected graph structure from a given number 
+    of nodes or a list of specific indices.
+    """
+
+    # Generate fully connected graph
+    l1 = ak.flatten([[el for el in range(k+1,nNodes)] for k in range(nNodes)])
+    l2 = ak.flatten([[k for el in range(k+1,nNodes)] for k in range(nNodes)])
+
+    # Replace indices if requested
+    if idcs is not None:
+        l1 = [idcs[el] for el in l1]
+        l2 = [idcs[el] for el in l2]
+
+    # Get directional graph
+    graph = dgl.graph((l1,l2))
+
 #------------------------- Classes: -------------------------#
-# Preprocessor, PreprocessorIterator
+# Preprocessor, PreprocessorIterator, Constructor
 
-# class Constructor:
-#     """
-#     Description
-#     -----------
-#     ...
+class Constructor:
+    """
+    Description
+    -----------
+    ...
 
-#     Attributes
-#     ----------
-#     ...
+    Attributes
+    ----------
+    ...
 
-#     Methods
-#     -------
-#     ...
-#     """
-#     def __init__(self,n_nodes=0,bidirected=True,keys=[]):
-#         self.n_nodes = n_nodes
-#         self.bidirected = bidirected
-#         self.keys = keys
+    Methods
+    -------
+    getDataTensor
+    setConstruct
+    getConstruct
+    getGraphs
+    """
+    def __init__(self,construct=None):
+        self.construct = construct
 
-#     def addNode():
-#         pass
+    def getDataTensor(batch,keys): #TODO: Put in constructor object
+        """
+        Parameters
+        ----------
+        batch : dict, required
+            Dictionary of entry keys to batch data arrays
+        keys : list, required
+            List of batch keys to use
 
-#     def createGraphs(batch):
-#         data = [ batch[key] for key in self.keys ]
+        Description
+        -----------
+        Reshapes batch data for specified keys from a dictionary of 
+        dimension (nKeys,nEvents,nParticles) to a numpy array of dimension
+        (nEvents,nParticles,nKeys).
+        """
+        return np.moveaxis(np.array([batch[key] for key in keys]),(0,1,2),(2,0,1))
 
-    
-# def createBankGraph(batch):
-#     for idx in range(len(batch["REC::Particle_px"])):
-#         counter += 1
-#         nomask = batch["REC::Particle_px"][idx].count()
-#         if nomask<2
-    
+    def setConstruct(construct):
+        """
+        Parameters
+        ----------
+        construct : callable, required
+
+        Description
+        -----------
+        Set graph construct function which should have parameters nNodes and data
+        where nNodes is the number of unmasked entries in data and data is the
+        data tensor of dimension (nNodes,nFeatures) for the graph.
+        """
+        self.construct = construct
+
+    def getConstruct():
+        """
+        Returns
+        -------
+        construct : callable, required
+
+        Description
+        -----------
+        Returns graph construct function which should have parameters nNodes and data
+        where nNodes is the number of unmasked entries in data and data is the
+        data tensor of dimension (nNodes,nFeatures) for the graph.
+        """
+        return self.construct
+        
+    def getGraphs(datatensor):
+        """
+        Parameters
+        ----------
+        datatensor : numpy.ma.array, required
+            Masked tensor array of dimension (nEvents,nNodes,nFeatures)
+
+        Returns
+        -------
+        List of dgl.graph objects from events in datatensor
+
+        Description
+        -----------
+        Creates dgl graphs from a events in a data tensor using
+        a given graph construction method.
+        """
+        graphs = []
+        for event in datatensor:
+            count = ma.count(event)
+            if count<=0: continue
+            graph = self.construct(count,event)
+            graphs.append(graph)
+            
+        return graphs
 
 class Preprocessor:
     """
@@ -129,7 +260,6 @@ class Preprocessor:
 
     Methods
     -------
-    __init__
     setFiletype
     getFileType
     addLabels
@@ -141,7 +271,6 @@ class Preprocessor:
     process
     setIterArgs
     getIterArgs
-    __iter__
     """
 
     def __init__(self,file_type="root",branches={},labels={},processes={}):
@@ -405,8 +534,7 @@ class PreprocessorIterator:
 
     Methods
     -------
-    __init__
-    __next__
+    ...
     """
 
     def __init__(self, preprocessor, *args, **kwargs):
