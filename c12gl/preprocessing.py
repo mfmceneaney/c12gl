@@ -194,8 +194,8 @@ class Constructor:
         Reshapes batch data for specified keys from a dictionary of 
         dimension (nKeys,nEvents,nParticles) to a numpy array of dimension
         (nEvents,nParticles,nKeys).
-        """
-        return np.moveaxis(np.array([batch[key] for key in keys]),(0,1,2),(2,0,1))
+        """        
+        return np.moveaxis(ma.array([batch[key] for key in keys]),(0,1,2),(2,0,1)) #NOTE: Important to use ma.array here!
 
     def setConstruct(self,construct):
         """
@@ -243,9 +243,14 @@ class Constructor:
         """
         graphs = []
         for event in datatensor:
-            count = ma.count(event)
+            count = ma.count(event[:,0]) #NOTE: This relies on there actually being data...
             if count<=0: continue
-            graph = self.construct(count,event)
+            graph = self.construct(
+                count,
+                torch.tensor(event[~event.mask])
+                if type(event)==np.ma.core.MaskedArray
+                else torch.tensor(event)
+            ) #NOTE: This needs to be a torch.tensor to add to dgl.graph data with pytorch backend.
             graphs.append(graph)
             
         return graphs
