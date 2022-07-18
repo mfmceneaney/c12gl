@@ -549,9 +549,9 @@ def train_dagnn(
         # Ensure model is in training mode
         model.train()
 
-       # Get domain data
-       tgt = dom_train_set.__next__()[0] #NOTE: This returns [dgl.HeteroGraph,torch.tensor] for graph and labels.
-       tgt = tgt.to(device)
+        # Get domain data
+        tgt = dom_train_set.__next__()[0] #NOTE: This returns [dgl.HeteroGraph,torch.tensor] for graph and labels.
+        tgt = tgt.to(device)
 
         # Get predictions and loss from data and labels
         x, label     = batch
@@ -925,7 +925,6 @@ class GraphDataset(DGLDataset):
         -----
         
         """
-        
         self.inGraphs = inGraphs #NOTE: Set these BEFORE calling super.
         self.inLabels = inLabels
         self._url = url
@@ -937,8 +936,7 @@ class GraphDataset(DGLDataset):
                                           force_reload=force_reload,
                                           verbose=verbose
                                           )
-        
-        
+
     def process(self):
         mat_path = os.path.join(self.raw_path,self.mode+'_dgl_graph.bin')
         #NOTE: process data to a list of graphs and a list of labels
