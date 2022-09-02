@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.realpath(os.path.dirname(__file__)+"/../../c12gl"))
 
 # -- Project information
 
-project = 'c12gl'
+project = 'C12GL'
 copyright = '2022, Matthew McEneaney'
 author = 'Matthew McEneaney'
 
