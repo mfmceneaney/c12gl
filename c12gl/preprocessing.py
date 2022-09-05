@@ -3,8 +3,6 @@
 # Author: Matthew McEneaney
 #--------------------------------------------------#
 
-from __future__ import absolute_import, division, print_function
-
 # NumPy/Awkward Array Imports
 import numpy as np
 import numpy.ma as ma
@@ -267,6 +265,9 @@ class Preprocessor:
     branches
     labels
     processes
+    processkwargs
+    iterargs
+    iterkwargs
 
     Methods
     -------
@@ -294,12 +295,13 @@ class Preprocessor:
         processes : dict, optional
             Dictionary of branch or bank name to preprocessing function
         """
-        self.file_type  = file_type
-        self.branches   = branches
-        self.labels     = labels
-        self.processes  = processes
-        self.iterargs   = ()
-        self.iterkwargs = {}
+        self.file_type     = file_type
+        self.branches      = branches
+        self.labels        = labels
+        self.processes     = processes
+        self.processkwargs = {}
+        self.iterargs      = ()
+        self.iterkwargs    = {}
 
     def setFiletype(self, file_type):
         """
@@ -415,14 +417,20 @@ class Preprocessor:
         ----------
         processes : dict, required
             Dictionary of branch/bank names to preprocesssing functions
+            or tuple of preprocessing function then kwargs dictionary
 
         Description
         -----------
         Adds dictionary of branch/bank names to preprocessing functions to existing
-        dictionary of preprocessing functions
+        dictionary of preprocessing functions and updates kwargs for those
+        functions if provided.
         """
         for name in processes:
-            self.processes[name] = processes[name]
+            if type(name==tuple):
+                self.processes[name] = processes[name][0]
+                self.processeskwargs[name] = processes[name][1]
+            else:
+                self.processes[name] = processes[name]
 
     def setProcesses(self, processes):
         """
@@ -450,6 +458,32 @@ class Preprocessor:
         """
         return self.processes
 
+    def setProcesskwargs(self, processkwargs):
+        """
+        Parameters
+        ----------
+        processkwargs : dict, required
+            Dictionary of branch/bank names to preprocesssing functions keyword arguments
+
+        Description
+        -----------
+        Sets dictionary of branch/bank names to preprocessing functions keyword arguments
+        """
+        self.processeskwargs = processeskwargs
+
+    def getProcesskwargs(self):
+        """
+        Returns
+        -------
+        self.processkwargs : dict
+            Dictionary of branch/bank names to preprocesssing functions keyword arguments
+
+        Description
+        -----------
+        Returns dictionary of branch/bank names to preprocesssing functions keyword arguments
+        """
+        return self.processkwargs
+
     def process(self,batch):
         """
         Parameters
@@ -468,10 +502,10 @@ class Preprocessor:
         """
         for name in self.branches: #NOTE: Define new branches.
             batch[name] = self.branches[name](batch)
-        for name in self.labels:   #NOTE: Create labels for classification.
+        for name in self.labels:   #NOTE: Create labels for classification. #TODO: COULD JUST GET RID OF THIS SINCE IT'S BASICALLY ADDING A NEW BRANCH...
             batch[name] = self.labels[name](batch)
         for name in self.processes: #NOTE: Preprocess data, e.g., by normalization.
-            batch[name] = self.processes[name](batch[name])
+            batch[name] = self.processes[name](batch[name],**self.processkwargs[name])
         return batch
 
     def setIterArgs(self, *args, **kwargs):
@@ -541,10 +575,6 @@ class PreprocessorIterator:
     ----------
     preprocessor
     iterator
-
-    Methods
-    -------
-    ...
     """
 
     def __init__(self, preprocessor, *args, **kwargs):
