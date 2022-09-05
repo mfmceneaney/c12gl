@@ -1,7 +1,11 @@
 API
 ===
 
-.. autosummary::
-   :toctree: generated
+.. note::
 
-   c12gl.preprocessing
+   This project is under active development.
+
+.. automodule:: c12gl
+    :members:
+    :undoc-members:
+    :show-inheritance:
