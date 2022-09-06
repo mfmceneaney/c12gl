@@ -24,7 +24,7 @@ import hipopy.hipopy as hipopy
 #------------------------- Functions: -------------------------#
 # normalize, getRingGraph, getWebGraph
 
-def normalize(arr,mean=None,std=None,max=False,index=-2,log=False,inplace=False):
+def normalize(arr,mean=None,std=None,use_max=False,index=-2,log=False,inplace=False):
     """
     Parameters
     ----------
@@ -34,10 +34,11 @@ def normalize(arr,mean=None,std=None,max=False,index=-2,log=False,inplace=False)
         Mean to which to normalize events
     std : float, optional
         Standard deviation to which to normalize events
-    max : bool, optional
+    use_max : bool, optional
         Whether to normalize to maximum deviation from event mean
+        instead of standard deviation (default)
     index : int, optional
-        Index along which to normalize, NOTE: Fixed for now.
+        Index along which to normalize
     log : bool, optional
         Whether to take log before normalization
     inplace : bool, optional
@@ -66,7 +67,7 @@ def normalize(arr,mean=None,std=None,max=False,index=-2,log=False,inplace=False)
             newarr[idx] = (newarr[idx]-mean)/std #TODO: COMBOS OF STATIC MEAN DYNAMIC STD ETC.
 
     # Normalize maximum deviation case
-    elif max:
+    elif use_max:
         # Masked array case
         if type(newarr)==ma.core.MaskedArray:
             for idx in range(len(newarr)):
@@ -428,7 +429,7 @@ class Preprocessor:
         for name in processes:
             if type(name==tuple):
                 self.processes[name] = processes[name][0]
-                self.processeskwargs[name] = processes[name][1]
+                self.processkwargs[name] = processes[name][1]
             else:
                 self.processes[name] = processes[name]
 
