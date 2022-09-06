@@ -4,7 +4,6 @@ import os
 import sys
 
 # -- Add source files for autodoc
-# sys.path.insert(0, os.path.realpath(os.path.dirname(__file__)+"/../../c12gl"))
 sys.path.insert(0, os.path.abspath('../../c12gl/'))
 
 # -- Project information
