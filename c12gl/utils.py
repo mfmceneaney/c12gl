@@ -31,7 +31,7 @@ from ignite.handlers import global_step_from_engine, EarlyStopping
 import datetime, os, itertools
 
 # Local Imports
-from dataloading import getGraphDatasetInfo, loadGraphDataset, GraphDataset
+from .dataloading import getGraphDatasetInfo, loadGraphDataset, GraphDataset
 
 #------------------------- Functions -------------------------#
 # setPltParams

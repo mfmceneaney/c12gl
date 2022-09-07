@@ -5,9 +5,9 @@ import optuna
 from optuna.samplers import TPESampler
 
 # Local Imports
-from models import GIN, Concatenate, SigmoidMLP
-from dataloading import getGraphDatasetInfo, loadGraphDataset, GraphDataset
-from utils import train, trainDA, evaluate, evaluateOnData
+from .models import GIN, Concatenate, SigmoidMLP
+from .dataloading import getGraphDatasetInfo, loadGraphDataset, GraphDataset
+from .utils import train, trainDA, evaluate, evaluateOnData
 
 def optimizationStudy(
     args,
