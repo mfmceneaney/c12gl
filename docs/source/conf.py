@@ -4,11 +4,11 @@ import os
 import sys
 
 # -- Add source files for autodoc
-sys.path.insert(0, os.path.abspath('../../c12gl/'))
+sys.path.insert(0, os.path.abspath('../../'))
 
 # -- Project information
 
-project = 'C12GL'
+project = 'c12gl'
 copyright = '2022, Matthew McEneaney'
 author = 'Matthew McEneaney'
 
