@@ -9,6 +9,9 @@ from .models import GIN, Concatenate, SigmoidMLP
 from .dataloading import getGraphDatasetInfo, loadGraphDataset, GraphDataset
 from .utils import train, trainDA, evaluate, evaluateOnData
 
+#TODO: Fix/complete definitions
+#TODO: Add docstrings
+
 def optimizationStudy(
     args,
     objective,
@@ -17,6 +20,35 @@ def optimizationStudy(
     log_dir="logs/",
     save_path="model",
     verbose=True):
+
+    """
+    Arguments
+    ---------
+    args : argparse.Namespace, required
+    objective : callable, required
+    device : torch.device, optional
+        Default : torch.device('cpu')
+    log_interval : int, optional
+        Default : 10
+    log_dir : str, optional
+        Default : 'logs/'
+    save_path : str, optional
+        Default : 'model'
+    verbose : boolean, optional
+        Default : True
+
+    Description
+    -----------
+    Runs an optuna optimization study using the given objective function.
+    Results are stored and sqlite3 database file.
+    TODO: list required args attributes.
+    db_path
+    pruning
+    study_name
+    ntrial
+    timeout
+    ...
+    """
 
     #----- MAIN PART -----#
     
@@ -142,6 +174,36 @@ def optimizationStudyDA(
     log_dir="logs/",
     save_path="torch_models",
     verbose=True):
+
+    """
+    Arguments
+    ---------
+    args : argparse.Namespace, required
+    objective : callable, required
+    device : torch.device, optional
+        Default : torch.device('cpu')
+    log_interval : int, optional
+        Default : 10
+    log_dir : str, optional
+        Default : 'logs/'
+    save_path : str, optional
+        Default : 'model'
+    verbose : boolean, optional
+        Default : True
+
+    Description
+    -----------
+    Runs an optuna optimization study using the given objective function
+    using a Domain Adversarial approach for training GNNs.
+    Results are stored and sqlite3 database file.
+    TODO: list required args attributes.
+    db_path
+    pruning
+    study_name
+    ntrial
+    timeout
+    ...
+    """
 
 def objective(trial):
 
