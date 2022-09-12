@@ -33,6 +33,9 @@ import datetime, os, itertools
 # Local Imports
 from .dataloading import getGraphDatasetInfo, loadGraphDataset, GraphDataset
 
+#TODO: Fix/update definitions
+#TODO: Add docstrings
+
 #------------------------- Functions -------------------------#
 # setPltParams
 # train
@@ -90,23 +93,23 @@ def train(
     """
     Parameters
     ----------
-    args : str, required
-    model : str, required
+    args : argparse.Namespace, required
+    model : torch.nn.Module, required
     device : str, required
-    train_loader : str, required
-    val_loader : str, required
-    optimizer : str, required
-    scheduler : str, required
-    criterion : str, required
-    max_epochs : str, required
+    train_loader : dgl.dataloading.GraphDataloader, required
+    val_loader : dgl.dataloading.GraphDataloader, required
+    optimizer : torch.optim.optimizer, required
+    scheduler : torch.optim.lr_scheduler, required
+    criterion : torch.nn.loss, required
+    max_epochs : int, required
     dataset : str, optional
         Default : ""
     prefix : str, optional
         Default : ""
     log_interval : int, optional
-        Default : 10.
+        Default : 10
     log_dir : str, optional
-        Default : "logs/".
+        Default : "logs/"
     save_path : str, optional
         Default : "model"
     verbose : bool, optional
@@ -309,31 +312,31 @@ def trainDA(
     """
     Parameters
     ----------
-    args : str, required
-    model : str, required
-    classifier : str, required
-    discriminator : str, required
+    args : argparse.Namespace, required
+    model : torch.nn.Module, required
+    classifier : torch.nn.Module, required
+    discriminator : torch.nn.Module, required
     device : str, required
-    train_loader : str, required
-    val_loader : str, required
-    dom_train_loader : str, required
-    dom_val_loader : str, required
-    model_optimizer : str, required
-    classifier_optimizer : str, required
-    discriminator_optimizer : str, required
-    scheduler : str, required
-    train_criterion : str, required
-    dom_criterion : str, required
-    alpha : function, required
+    train_loader : dgl.dataloading.GraphDataLoader, required
+    val_loader : dgl.dataloading.GraphDataLoader, required
+    dom_train_loader : dgl.dataloading.GraphDataLoader, required
+    dom_val_loader : dgl.dataloading.GraphDataLoader, required
+    model_optimizer : torch.optim.optimizer, required
+    classifier_optimizer : torch.optim.optimizer, required
+    discriminator_optimizer : torch.optim.optimizer, required
+    scheduler : torch.optim.lr_scheduler, required
+    train_criterion : torch.nn.loss, required
+    dom_criterion : torch.nn.loss, required
+    alpha : float, required
     max_epochs : int, required
     log_interval : int, optional
         Default : 10
     log_dir : str, optional
         Default : "logs/"
     save_path : str, optional
-        Default : "model".
+        Default : "model"
     verbose : bool, optional
-        Default : True.
+        Default : True
 
     Returns
     -------
@@ -637,7 +640,7 @@ def evaluate(
     """
     Arguments
     ---------
-    model : dgl.nn.model
+    model : torch.nn.Module
     device : string
     eval_loader : dgl.dataloading.GraphDataLoader, optional
     dataset : string, optional
@@ -705,7 +708,7 @@ def evaluateOnData(
     """
     Arguments
     ---------
-    model : torch.nn.model
+    model : torch.nn.Module
     device : string
     dataset : string, optional
     prefix : string, optional
