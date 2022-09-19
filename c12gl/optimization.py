@@ -90,7 +90,7 @@ def optimizationStudy(
         criterion = nn.CrossEntropyLoss()
 
         # Make sure log/save directories exist
-        trialdir = 'trial_'+datetime.datetime.now().strftime("%F")+'_'+args.study_name+'_'+str(trial.number+1)
+        trialdir = args.study_name+'_trial_'+str(trial.number+1)
         try:
             os.makedirs(args.log+'/'+trialdir) #NOTE: Do NOT use os.path.join() here since it requires that the directory already exist.
         except FileExistsError:
@@ -267,7 +267,7 @@ def optimizationStudyDA(
         dom_criterion   = nn.CrossEntropyLoss()
 
         # Make sure log/save directories exist
-        trialdir = 'trial_'+datetime.datetime.now().strftime("%F")+'_'+args.study_name+'_'+str(trial.number+1)
+        trialdir = args.study_name+'_trial_'+str(trial.number+1)
         try:
             os.makedirs(args.log+'/'+trialdir) #NOTE: Do NOT use os.path.join() here since it requires that the directory already exist.
         except FileExistsError:
