@@ -1,4 +1,6 @@
 
+# PyTorch Imports
+import torch
 
 # Optuna imports
 import optuna

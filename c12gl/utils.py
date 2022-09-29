@@ -73,27 +73,18 @@ def setPltParams(
     plt.rc('legend', fontsize=15) #fontsize of the legend
 
 def train(
-    args,
-    model,
-    device,
-    train_loader,
-    val_loader,
-    optimizer,
-    scheduler,
-    criterion,
-    max_epochs,
-    dataset="",
-    prefix="",
-    log_interval=10,
-    log_dir="logs/",
-    save_path="model",
-    verbose=True
+    rank,
+    config
     ):
 
     """
     Parameters
     ----------
-    args : argparse.Namespace, required
+    rank : int
+    config : dict
+
+    Necessary entries in config
+    ---------------------------
     model : torch.nn.Module, required
     device : str, required
     train_loader : dgl.dataloading.GraphDataloader, required
@@ -114,6 +105,22 @@ def train(
         Default : "model"
     verbose : bool, optional
         Default : True
+
+    args,
+    model,
+    device,
+    train_loader,
+    val_loader,
+    optimizer,
+    scheduler,
+    criterion,
+    max_epochs,
+    dataset="",
+    prefix="",
+    log_interval=10,
+    log_dir="logs/",
+    save_path="model",
+    verbose=True
 
     Returns
     -------
@@ -611,6 +618,15 @@ def trainDA(
     plt.legend()
     f.savefig(os.path.join(log_dir,'training_metrics_loss_'+datetime.datetime.now().strftime("%F")+'.png'))
 
+    #NOTE: ADDED
+    np.savez_compressed(
+                        os.path.join(log_dir,'metrics.npz'),
+                        train_loss=logs['train']['train_loss'],
+                        val_loss=logs['val']['train_loss'],
+                        domain_train_loss=logs['train']['dom_loss'],
+                        domain_val_loss=logs['val']['dom_loss']
+                        )
+
     # Create training/validation accuracy plot
     f = plt.figure()
     plt.subplot()
@@ -623,6 +639,15 @@ def trainDA(
     plt.ylabel('accuracy')
     plt.xlabel('epoch')
     f.savefig(os.path.join(log_dir,'training_metrics_acc_'+datetime.datetime.now().strftime("%F")+'.png'))
+
+    #NOTE: ADDED
+    np.savez_compressed(
+                        os.path.join(log_dir,'metrics.npz'),
+                        train_acc=logs['train']['train_acc'],
+                        val_acc=logs['val']['train_acc'],
+                        domain_train_acc=logs['train']['dom_acc'],
+                        domain_val_acc=logs['val']['dom_acc']
+                        )
 
     return logs
     

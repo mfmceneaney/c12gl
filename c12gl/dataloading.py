@@ -4,11 +4,22 @@
 # Author: Matthew McEneaney
 #--------------------------------------------------#
 
+# Array Imports
+import numpy as np
+
 # DGL Graph Learning Imports
 from dgl import save_graphs, load_graphs
 from dgl.data import DGLDataset
 from dgl.dataloading import GraphDataLoader
 from dgl.data.utils import save_info, load_info, Subset
+
+# PyTorch Imports
+import torch
+
+# Utility Imports
+import os.path as osp
+
+#TODO: 
 
 #------------------------- Functions -------------------------#
 # getGraphDatasetInfo
@@ -244,12 +255,38 @@ class GraphDataset(DGLDataset):
                                           )
 
     def process(self):
-        mat_path = os.path.join(self.raw_path,self.mode+'_dgl_graph.bin')
+        mat_path = osp.join(self.raw_path,self.mode+'_dgl_graph.bin')
         #NOTE: process data to a list of graphs and a list of labels
         if self.inGraphs is not None and self.inLabels is not None:
             self.graphs, self.labels = self.inGraphs, self.inLabels #DEBUGGING: COMMENTED OUT: torch.LongTensor(self.inLabels)
+        elif not self.has_cache(): self.graphs, self.labels = [], []
         else:
             self.graphs, self.labels = load_graphs(mat_path)
+    
+    #----- ADDED -----#
+    def extend(self,inLabels,inGraphs):
+        """
+        Parameters
+        ----------
+        inLabels : torch.tensor
+        inGraphs : list(dgl.graph)
+
+        Description
+        -----------
+        Adds additional labels and graphs to existing dataset and saves to file.
+        """
+        self.labels = torch.cat(
+                                (
+                                    self.labels['labels'] if type(self.labels)==dict
+                                    else self.labels if type(self.labels)==torch.Tensor
+                                    else torch.tensor(self.labels),
+                                    inLabels if type(inLabels)==torch.Tensor
+                                    else torch.tensor(inLabels)
+                                ),
+                                dim=0
+                                )
+        self.graphs.extend(inGraphs)
+        self.save()
 
     def __getitem__(self, idx):
         """ Get graph and label by index
@@ -270,26 +307,31 @@ class GraphDataset(DGLDataset):
         return len(self.graphs)
 
     def save(self):
+        # check that graphs and labels exist
+        if len(self.graphs)<=0:
+            if self.verbose: print("No graphs to save")
+            return
+
         # save graphs and labels
-        graph_path = os.path.join(self.save_path, self.mode + '_dgl_graph.bin')
+        graph_path = osp.join(self.save_path, self.mode + '_dgl_graph.bin')
         save_graphs(graph_path, self.graphs, {'labels': self.labels})
         # save other information in python dict
-        info_path = os.path.join(self.save_path, self.mode + '_info.pkl')
+        info_path = osp.join(self.save_path, self.mode + '_info.pkl')
         save_info(info_path, {'num_classes': self.num_classes})
     
     def load(self):
         # load processed data from directory `self.save_path`
-        graph_path = os.path.join(self.save_path, self.mode + '_dgl_graph.bin')
+        graph_path = osp.join(self.save_path, self.mode + '_dgl_graph.bin')
         self.graphs, label_dict = load_graphs(graph_path)
         self.labels = label_dict['labels']
-        info_path = os.path.join(self.save_path, self.mode + '_info.pkl')
+        info_path = osp.join(self.save_path, self.mode + '_info.pkl')
         self.num_classes = load_info(info_path)['num_classes']
 
     def has_cache(self):
         # check whether there are processed data in `self.save_path`
-        graph_path = os.path.join(self.save_path, self.mode + '_dgl_graph.bin')
-        info_path = os.path.join(self.save_path, self.mode + '_info.pkl')
-        return os.path.exists(graph_path) and os.path.exists(info_path)
+        graph_path = osp.join(self.save_path, self.mode + '_dgl_graph.bin')
+        info_path = osp.join(self.save_path, self.mode + '_info.pkl')
+        return osp.exists(graph_path) and osp.exists(info_path)
 
     def shuffle(self):
         """

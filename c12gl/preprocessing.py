@@ -246,9 +246,9 @@ class Constructor:
             if count<=0: continue
             graph = self.construct(
                 count,
-                torch.tensor(event[~event.mask])
+                torch.tensor(event[~event.mask])[0] #NOTE: [0] is important since array is wrapped in torch.tensor
                 if type(event)==np.ma.core.MaskedArray
-                else torch.tensor(event)
+                else torch.tensor(event)[0] #NOTE: [0] is important since array is wrapped in torch.tensor
             ) #NOTE: This needs to be a torch.tensor to add to dgl.graph data with pytorch backend.
             graphs.append(graph)
             
@@ -504,7 +504,10 @@ class Preprocessor:
         for name in self.branches: #NOTE: Define new branches.
             batch[name] = self.branches[name](batch)
         for name in self.labels:   #NOTE: Create labels for classification. #TODO: COULD JUST GET RID OF THIS SINCE IT'S BASICALLY ADDING A NEW BRANCH...
-            batch[name] = self.labels[name](batch)
+            try: batch[name] = self.labels[name](batch)
+            except KeyError:
+                print("DEBUGGING: batch = ",batch)#DEBUGGING
+                print("DEBUGGING: batch.keys() = ",batch.keys())#DEBUGGING
         for name in self.processes: #NOTE: Preprocess data, e.g., by normalization.
             batch[name] = self.processes[name](batch[name],**self.processkwargs[name])
         return batch
