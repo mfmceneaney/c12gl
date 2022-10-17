@@ -198,6 +198,7 @@ def loadGraphDataset(
         return train_loader, val_loader, num_labels, node_feature_dim, edge_feature_dim
 
 #------------------------- Classes -------------------------#
+# GraphDataset
 
 class GraphDataset(DGLDataset):
 
