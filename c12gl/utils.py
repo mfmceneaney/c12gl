@@ -7,7 +7,6 @@
 # ML Imports
 import numpy as np
 import numpy.ma as ma
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 # DGL Graph Learning Imports
@@ -23,9 +22,12 @@ import torch.nn as nn
 import torch.optim as optim
 
 # PyTorch Ignite Imports
+import ignite
+import ignite.distributed as idist
 from ignite.engine import Engine, Events, EventEnum, create_supervised_trainer, create_supervised_evaluator
 from ignite.metrics import Accuracy, Loss
 from ignite.handlers import global_step_from_engine, EarlyStopping
+from ignite.contrib.handlers.mlflow_logger import MLflowLogger
 
 # Utility Imports
 import datetime, os, itertools
@@ -83,7 +85,7 @@ def train(
     rank : int
     config : dict
 
-    Necessary entries in config
+    Entries in config
     ---------------------------
     model : torch.nn.Module, required
     device : str, required
@@ -101,26 +103,14 @@ def train(
         Default : 10
     log_dir : str, optional
         Default : "logs/"
-    save_path : str, optional
+    model_name : str, optional
         Default : "model"
     verbose : bool, optional
         Default : True
-
-    args,
-    model,
-    device,
-    train_loader,
-    val_loader,
-    optimizer,
-    scheduler,
-    criterion,
-    max_epochs,
-    dataset="",
-    prefix="",
-    log_interval=10,
-    log_dir="logs/",
-    save_path="model",
-    verbose=True
+    distributed : boolean, optional
+        Default : False
+     mlflow : boolean, optional
+        Default : False
 
     Returns
     -------
@@ -132,11 +122,65 @@ def train(
     Train a GNN using a basic supervised learning approach.
     """
 
-    # Show model if requested
-    if verbose: print(model)
+    # Get configuration parameters
+    model        = config['model']
+    device       = config['device']
+    train_loader = config['train_loader']
+    val_loader   = config['val_loader']
+    optimizer    = config['optimizer']
+    scheduler    = config['scheduler']
+    criterion    = config['criterion']
+    max_epochs   = config['max_epochs']
+    log_interval = config['log_interval']
+    log_dir      = config['log_dir']
+    model_name   = config['model_name']
+    verbose      = config['verbose']
+    
+    # Create log directory
+    os.makedirs(log_dir, exist_ok=True)
 
-    # Logs for matplotlib plots
+    # Create logs for metrics
     logs={'train':{'loss':[],'accuracy':[]}, 'val':{'loss':[],'accuracy':[]}}
+
+    # Distributed setup
+    if 'distributed' in config.keys() and config['distributed']:
+        
+        # Show info if requested
+        if verbose: print(
+            idist.get_rank(),
+            ": run with config:",
+            config,
+            "- backend=",
+            idist.backend(),
+            "- world size",
+            idist.get_world_size(),
+        )
+
+        device = idist.device()
+
+        # Convert dataloaders to distributed form
+        train_loader = idist.auto_dataloader(
+            train_loader.dataset,
+            collate_fn=train_loader.collate_fn,
+            batch_size=train_loader.batch_size,
+            num_workers=train_loader.num_workers,
+            shuffle=True,
+            pin_memory=train_loader.pin_memory,
+            drop_last=train_loader.drop_last
+        )
+        val_loader = idist.auto_dataloader(
+            val_loader.dataset,
+            collate_fn=val_loader.collate_fn,
+            batch_size=val_loader.batch_size,
+            num_workers=val_loader.num_workers,
+            shuffle=True,
+            pin_memory=val_loader.pin_memory,
+            drop_last=val_loader.drop_last
+        )
+
+        # Model, criterion, optimizer setup
+        model = idist.auto_model(model)
+        optimizer = idist.auto_optim(optimizer)
 
     # Create train function
     def train_step(engine, batch):
@@ -145,12 +189,10 @@ def train(
         model.train()
 
         # Get predictions and loss from data and labels
-        x, label   = batch
-        y = label[:,0].clone().detach().long() #NOTE: This assumes labels is 2D.
-        x      = x.to(device)
-        y      = y.to(device)
-        y_pred = model(x)
-        loss   = criterion(y_pred, y)
+        x    = batch[0].to(device) # Batch data
+        y    = batch[1][:,0].clone().detach().long().to(device) if len(np.shape(batch[1]))==2 else batch[1].clone().detach().long().to(device) #NOTE: This assumes labels is 2D and classification labels are integers
+        prediction_raw = model(x) # Model prediction
+        loss = criterion(prediction_raw, y) #NOTE: DO NOT APPLY SOFTMAX BEFORE CrossEntropyLoss
 
         # Step optimizer
         optimizer.zero_grad()
@@ -158,15 +200,14 @@ def train(
         optimizer.step()
 
         # Apply softmax and get accuracy
-        test_Y = y.clone().detach().float().view(-1, 1) 
-        probs_Y = torch.softmax(y_pred, 1)
-        argmax_Y = torch.max(probs_Y, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
-        acc = (test_Y == argmax_Y.float()).sum().item() / len(test_Y)
+        prediction_softmax = torch.softmax(prediction_raw, 1)
+        prediction         = torch.max(prediction_softmax, 1)[1].view(-1, 1)
+        acc                = (y.float().view(-1,1) == prediction.float()).sum().item() / len(y)
 
         return {
-                'y_pred': y_pred,
                 'y': y,
-                'y_pred_preprocessed': argmax_Y,
+                'prediction_raw': prediction_raw,
+                'prediction': prediction,
                 'loss': loss.detach().item(),
                 'accuracy': acc
                 }
@@ -180,23 +221,21 @@ def train(
         with torch.no_grad(): #NOTE: Important to call both model.eval and with torch.no_grad()! See https://stackoverflow.com/questions/55627780/evaluating-pytorch-models-with-torch-no-grad-vs-model-eval.
 
             # Get predictions and loss from data and labels
-            x, label   = batch
-            y = label[:,0].clone().detach().long() #NOTE: This assumes labels is 2D.
-            x      = x.to(device)
-            y      = y.to(device)
-            y_pred = model(x)
-            loss   = criterion(y_pred, y)
+            x    = batch[0].to(device)
+            y    = batch[1][:,0].clone().detach().long().to(device) if len(np.shape(batch[1]))==2 else batch[1].clone().detach().long().to(device) #NOTE: This assumes labels is 2D and classification labels are integers
+            h    = model(x)
+            prediction_raw = model(x) # Model prediction
+            loss = criterion(prediction_raw, y)
 
-            # Apply softmax and get accuracy
-            test_Y = y.clone().detach().float().view(-1, 1) 
-            probs_Y = torch.softmax(y_pred, 1)
-            argmax_Y = torch.max(probs_Y, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
-            acc = (test_Y == argmax_Y.float()).sum().item() / len(test_Y)
+        # Apply softmax and get accuracy
+        prediction_softmax = torch.softmax(prediction_raw, 1)
+        prediction         = torch.max(prediction_softmax, 1)[1].view(-1, 1)
+        acc                = (y.float().view(-1,1) == prediction.float()).sum().item() / len(y)
 
         return {
-                'y_pred': y_pred,
                 'y': y,
-                'y_pred_preprocessed': argmax_Y,
+                'prediction_raw': prediction_raw,
+                'prediction': prediction,
                 'loss': loss.detach().item(),
                 'accuracy': acc
                 }
@@ -205,48 +244,49 @@ def train(
     trainer = Engine(train_step)
 
     # Add training metrics
-    accuracy  = Accuracy(output_transform=lambda x: [x['y_pred_preprocessed'], x['y']])
-    accuracy.attach(trainer, 'accuracy')
-    loss      = Loss(criterion,output_transform=lambda x: [x['y_pred'], x['y']])
-    loss.attach(trainer, 'loss')
+    train_accuracy = Accuracy(output_transform=lambda x: [x['prediction'], x['y']])
+    train_accuracy.attach(trainer, 'accuracy')
+    train_loss     = Loss(criterion,output_transform=lambda x: [x['prediction_raw'], x['y']])
+    train_loss.attach(trainer, 'loss')
 
     # Create evaluator
     evaluator = Engine(val_step)
 
     # Add evaluation metrics
-    accuracy_  = Accuracy(output_transform=lambda x: [x['y_pred_preprocessed'], x['y']])
-    accuracy_.attach(evaluator, 'accuracy')
-    loss_      = Loss(criterion,output_transform=lambda x: [x['y_pred'], x['y']])
-    loss_.attach(evaluator, 'loss')
+    val_accuracy = Accuracy(output_transform=lambda x: [x['prediction'], x['y']])
+    val_accuracy.attach(evaluator, 'accuracy')
+    val_loss     = Loss(criterion,output_transform=lambda x: [x['prediction_raw'], x['y']])
+    val_loss.attach(evaluator, 'loss')
 
-    # Set up early stopping
-    def score_function(engine):
-        val_loss = engine.state.metrics['loss']
-        return -val_loss
+#     # Set up early stopping
+#     # score_function = config['score_function'] if 'score_function' in config.keys() else score_function
+#     def score_function(engine):
+#         val_loss = engine.state.metrics['loss']
+#         return -val_loss
 
-    handler = EarlyStopping(
-        patience=args.patience,
-        min_delta=args.min_delta,
-        cumulative_delta=args.cumulative_delta,
-        score_function=score_function,
-        trainer=trainer
-        )
-    evaluator.add_event_handler(Events.COMPLETED, handler) #NOTE: The handler is attached to an evaluator which runs one epoch on validation dataset.
+#     handler = EarlyStopping(
+#         patience=patience,
+#         min_delta=args.min_delta,
+#         cumulative_delta=args.cumulative_delta,
+#         score_function=score_function,
+#         trainer=trainer
+#         )
+#     evaluator.add_event_handler(Events.COMPLETED, handler) #NOTE: The handler is attached to an evaluator which runs one epoch on validation dataset.
 
+#     # Step learning rate #NOTE: DEBUGGING: TODO: Replace above...
+#     @trainer.on(Events.EPOCH_COMPLETED)
+#     def stepLR(trainer):
+#         if type(scheduler)==torch.optim.lr_scheduler.ReduceLROnPlateau:
+#             scheduler.step(trainer.state.output['loss'])#TODO: NOTE: DEBUGGING.... Fix this...
+#         else:
+#             scheduler.step()
+            
     # Print training loss and accuracy
     @trainer.on(Events.ITERATION_COMPLETED(every=log_interval))
     def print_training_loss(trainer):
         if verbose: print(f"\rEpoch[{trainer.state.epoch}/{max_epochs} : " +
             f"{(trainer.state.iteration-(trainer.state.epoch-1)*trainer.state.epoch_length)/trainer.state.epoch_length*100:.1f}%] " +
             f"Loss: {trainer.state.output['loss']:.3f} Accuracy: {trainer.state.output['accuracy']:.3f}",end='')
-
-    # Step learning rate #NOTE: DEBUGGING: TODO: Replace above...
-    @trainer.on(Events.EPOCH_COMPLETED)
-    def stepLR(trainer):
-        if type(scheduler)==torch.optim.lr_scheduler.ReduceLROnPlateau:
-            scheduler.step(trainer.state.output['loss'])#TODO: NOTE: DEBUGGING.... Fix this...
-        else:
-            scheduler.step()
 
     # Log training metrics
     @trainer.on(Events.EPOCH_COMPLETED)
@@ -264,11 +304,12 @@ def train(
 
     # Run training loop
     trainer.run(train_loader, max_epochs=max_epochs)
-    if save_path!="":
-        torch.save(model.to('cpu').state_dict(), os.path.join(log_dir,save_path+"_weights")) #NOTE: Save to cpu state so you can test more easily.
+        
+    # Save model
+    torch.save(model.to('cpu').state_dict(), os.path.join(log_dir,model_name)) #NOTE: Save to cpu state so you can test more easily.
    
-    # Create training/validation loss plot
-    f = plt.figure()
+    # Create training/validation loss plot #NOTE: #TODO: ARE THESE GRAPHS REALLY NECESSARY???
+    f_loss = plt.figure()
     plt.subplot()
     plt.title('Loss per epoch')
     plt.plot(logs['train']['loss'],label="training")
@@ -277,10 +318,10 @@ def train(
     plt.ylabel('loss')
     plt.xlabel('epoch')
     plt.legend()
-    f.savefig(os.path.join(log_dir,'training_metrics_loss_'+datetime.datetime.now().strftime("%F")+'.png'))
+    f_loss.savefig(os.path.join(log_dir,'training_loss.png'))
 
-    # Create training/validation accuracy plot
-    f = plt.figure()
+    # Create training/validation accuracy plot #NOTE: #TODO: ARE THESE GRAPHS REALLY NECESSARY???
+    f_acc = plt.figure()
     plt.subplot()
     plt.title('Accuracy per epoch')
     plt.plot(logs['train']['accuracy'],label="training")
@@ -288,8 +329,76 @@ def train(
     plt.legend(loc='best', frameon=False)
     plt.ylabel('accuracy')
     plt.xlabel('epoch')
-    f.savefig(os.path.join(log_dir,'training_metrics_acc_'+datetime.datetime.now().strftime("%F")+'.png'))
+    f_acc.savefig(os.path.join(log_dir,'training_accuracy.png'))
+    
+    # Run MLFlow routines if requested
+    if 'mlflow' in config.keys() and config['mlflow']:
 
+        # Start MLFlow run
+        mlflow.start_run()#NOTE: ADDED 10/17/22
+        run = mlflow.active_run()
+        print("Active run_id: {}".format(run.info.run_id))
+
+        # Create MLFlow logger
+        tracking_uri = config['tracking_uri'] if 'tracking_uri' in config.keys() else '' #TODO: Make this an option
+        mlflow_logger = MLflowLogger(tracking_uri=tracking_uri)
+
+        # Log experiment parameters:                                                                                                                                                                                                            
+        mlflow.set_tag("trial_number",config['trial_number'] if 'trial_number' in config.keys() else -1)#DEBUGGING ADDED                                                                                                                                                                                        
+        mlflow_logger.log_params({
+            "seed": config['seed'] if 'seed' in config.keys() else -1,                                                                                                                                                                                                                    
+            "batch_size": batch_size,
+            "model": model.__class__.__name__,
+
+            "pytorch version": torch.__version__,
+            "ignite version": ignite.__version__,
+            "cuda version": torch.version.cuda,
+            "device name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else str(-1),
+            "trial number": config['trial_number'] if 'trial_number' in config.keys() else -1
+        })
+
+        # Attach the logger to the trainer to log training loss at each iteration
+        mlflow_logger.attach_output_handler(
+            trainer,
+            event_name=Events.ITERATION_COMPLETED,
+            tag="training",
+            output_transform=lambda output : output['loss']
+        )
+
+        # Attach the logger to the evaluator on the training dataset after each epoch
+        mlflow_logger.attach_output_handler(
+            trainer,
+            event_name=Events.EPOCH_COMPLETED,
+            tag="training",
+            metric_names=["loss", "accuracy"],
+            global_step_transform=global_step_from_engine(trainer),
+        )
+
+        # Attach the logger to the evaluator on the validation dataset after each epoch
+        mlflow_logger.attach_output_handler(
+            evaluator,
+            event_name=Events.EPOCH_COMPLETED,
+            tag="validation",
+            metric_names=["loss", "accuracy"],
+            global_step_transform=global_step_from_engine(trainer)
+        )
+
+        # Attach the logger to the trainer to log optimizer's parameters, e.g. learning rate at each iteration
+        mlflow_logger.attach_opt_params_handler(
+            trainer,
+            event_name=Events.ITERATION_STARTED,
+            optimizer=optimizer,
+            param_name='lr'  # optional
+        )
+        
+        # Save model in MLFlow format
+        mlflow_logger.pytorch.log_model(model,model_name)
+        
+        mlflow.log_figure(f_loss, 'training_loss.png')
+        mlflow.log_figure(f_acc,  'training_accuracy.png')
+        
+        mlflow.end_run()
+        
     return logs
 
 def trainDA(
@@ -355,8 +464,8 @@ def trainDA(
     Train a GNN using a Domain Adversarial approach.
     """
 
-    # Show model if requested
-    if verbose: print(model)
+    # Create log directory
+    os.makedirs(log_dir, exist_ok=True)
 
     # Logs for matplotlib plots
     logs={'train':{'train_loss':[],'train_accuracy':[],'dom_loss':[],'dom_accuracy':[]},
@@ -538,30 +647,38 @@ def trainDA(
     evaluator = Engine(val_step)
 
     # Add validation metrics for classifier
-    _train_accuracy  = Accuracy(output_transform=lambda x: [x['train_probs_y'], x['train_true_y']])
-    _train_accuracy.attach(evaluator, 'train_accuracy')
-    _train_loss      = Loss(train_criterion,output_transform=lambda x: [x['train_y'], x['train_true_y']])
-    _train_loss.attach(evaluator, 'train_loss')
+    val_accuracy  = Accuracy(output_transform=lambda x: [x['train_probs_y'], x['train_true_y']])
+    val_accuracy.attach(evaluator, 'train_accuracy')
+    val_loss      = Loss(train_criterion,output_transform=lambda x: [x['train_y'], x['train_true_y']])
+    val_loss.attach(evaluator, 'train_loss')
 
     # Add validation metrics for discriminator
-    _dom_accuracy  = Accuracy(output_transform=lambda x: [x['dom_argmax_y'], x['dom_true_y']])
-    _dom_accuracy.attach(evaluator, 'dom_accuracy')
-    _dom_loss      = Loss(dom_criterion,output_transform=lambda x: [x['dom_y'], x['dom_true_y']])
-    _dom_loss.attach(evaluator, 'dom_loss')
+    val_dom_accuracy  = Accuracy(output_transform=lambda x: [x['dom_argmax_y'], x['dom_true_y']])
+    val_dom_accuracy.attach(evaluator, 'dom_accuracy')
+    val_dom_loss      = Loss(dom_criterion,output_transform=lambda x: [x['dom_y'], x['dom_true_y']])
+    val_dom_loss.attach(evaluator, 'dom_loss')
 
-    # Set up early stopping
-    def score_function(engine):
-        val_loss = engine.state.metrics['train_loss']
-        return -val_loss
+    # # Set up early stopping
+    # def score_function(engine):
+    #     val_loss = engine.state.metrics['train_loss']
+    #     return -val_loss
 
-    handler = EarlyStopping(
-        patience=args.patience,
-        min_delta=args.min_delta,
-        cumulative_delta=args.cumulative_delta,
-        score_function=score_function,
-        trainer=trainer
-        )
-    evaluator.add_event_handler(Events.COMPLETED, handler) #NOTE: The handler is attached to an evaluator which runs one epoch on validation dataset.
+    # handler = EarlyStopping(
+    #     patience=args.patience,
+    #     min_delta=args.min_delta,
+    #     cumulative_delta=args.cumulative_delta,
+    #     score_function=score_function,
+    #     trainer=trainer
+    #     )
+    # evaluator.add_event_handler(Events.COMPLETED, handler) #NOTE: The handler is attached to an evaluator which runs one epoch on validation dataset.
+
+    # # Step learning rate
+    # @trainer.on(Events.EPOCH_COMPLETED)
+    # def stepLR(trainer):
+    #     if type(scheduler)==torch.optim.lr_scheduler.ReduceLROnPlateau:
+    #         scheduler.step(trainer.state.output['train_loss'])#TODO: NOTE: DEBUGGING.... Fix this...
+    #     else:
+    #         scheduler.step()
 
     # Print training loss and accuracy
     @trainer.on(Events.ITERATION_COMPLETED(every=log_interval))
@@ -572,14 +689,6 @@ def trainDA(
             f"Classifier Loss: {trainer.state.output['train_loss']:.3f} Accuracy: {trainer.state.output['train_accuracy']:.3f} " +
             f"Discriminator: Loss: {trainer.state.output['dom_loss']:.3f} Accuracy: {trainer.state.output['dom_accuracy']:.3f}",
             end='')
-
-    # Step learning rate
-    @trainer.on(Events.EPOCH_COMPLETED)
-    def stepLR(trainer):
-        if type(scheduler)==torch.optim.lr_scheduler.ReduceLROnPlateau:
-            scheduler.step(trainer.state.output['train_loss'])#TODO: NOTE: DEBUGGING.... Fix this...
-        else:
-            scheduler.step()
 
     # Log training metrics
     @trainer.on(Events.EPOCH_COMPLETED)
@@ -599,13 +708,14 @@ def trainDA(
 
     # Run training loop
     trainer.run(train_loader, max_epochs=max_epochs)
-    if save_path!="":
-        torch.save(model.to('cpu').state_dict(), os.path.join(log_dir,save_path+'_model_weights')) #NOTE: Save to cpu state so you can test more easily.
-        torch.save(classifier.to('cpu').state_dict(), os.path.join(log_dir,save_path+'_classifier_weights'))
-        torch.save(discriminator.to('cpu').state_dict(), os.path.join(log_dir,save_path+'_discriminator_weights'))
+
+    # Save models
+    torch.save(model.to('cpu').state_dict(), os.path.join(log_dir,save_path+'_model')) #NOTE: Save to cpu state so you can test more easily.
+    torch.save(classifier.to('cpu').state_dict(), os.path.join(log_dir,save_path+'_classifier'))
+    torch.save(discriminator.to('cpu').state_dict(), os.path.join(log_dir,save_path+'_discriminator'))
 
     # Create training/validation loss plot
-    f = plt.figure()
+    f_loss = plt.figure()
     plt.subplot()
     plt.title('Loss per epoch')
     plt.plot(logs['train']['train_loss'],'-',color='orange',label="classifier training")
@@ -616,19 +726,10 @@ def trainDA(
     plt.ylabel('loss')
     plt.xlabel('epoch')
     plt.legend()
-    f.savefig(os.path.join(log_dir,'training_metrics_loss_'+datetime.datetime.now().strftime("%F")+'.png'))
-
-    #NOTE: ADDED
-    np.savez_compressed(
-                        os.path.join(log_dir,'metrics.npz'),
-                        train_loss=logs['train']['train_loss'],
-                        val_loss=logs['val']['train_loss'],
-                        domain_train_loss=logs['train']['dom_loss'],
-                        domain_val_loss=logs['val']['dom_loss']
-                        )
+    f_loss.savefig(os.path.join(log_dir,'training_loss.png'))
 
     # Create training/validation accuracy plot
-    f = plt.figure()
+    f_acc = plt.figure()
     plt.subplot()
     plt.title('Accuracy per epoch')
     plt.plot(logs['train']['train_accuracy'],'-',color='blue',label="classifier training")
@@ -638,16 +739,7 @@ def trainDA(
     plt.legend(loc='best', frameon=False)
     plt.ylabel('accuracy')
     plt.xlabel('epoch')
-    f.savefig(os.path.join(log_dir,'training_metrics_acc_'+datetime.datetime.now().strftime("%F")+'.png'))
-
-    #NOTE: ADDED
-    np.savez_compressed(
-                        os.path.join(log_dir,'metrics.npz'),
-                        train_acc=logs['train']['train_acc'],
-                        val_acc=logs['val']['train_acc'],
-                        domain_train_acc=logs['train']['dom_acc'],
-                        domain_val_acc=logs['val']['dom_acc']
-                        )
+    f_acc.savefig(os.path.join(log_dir,'training_accuracy.png'))
 
     return logs
     
@@ -726,20 +818,16 @@ def evaluateOnData(
     dataset="",
     prefix="",
     split=1.0,
-    log_dir="logs/",
-    verbose=True
     ):
 
     """
     Arguments
     ---------
     model : torch.nn.Module
-    device : string
+    device : torch.device
     dataset : string, optional
     prefix : string, optional
     split : float, optional
-    log_dir : string, optional
-    verbose : boolean, optional
 
     Returns
     -------
