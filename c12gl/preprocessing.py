@@ -22,7 +22,29 @@ import hipopy.hipopy as hipopy
 #TODO: Check doc strings
 
 #------------------------- Functions: -------------------------#
-# normalize, getRingGraph, getWebGraph
+# pad, normalize, getRingGraph, getWebGraph
+
+def pad(arr, target_dim=100, axis=1):
+    """
+    Parameters
+    ----------
+    arr : list, required
+        Input 2D ragged array corresponding to single event to pad and convert to np.ma.array
+    target_dim : int, optional
+        Target dimension of output padded array
+    axis : int, optional
+        Axis along which to pad
+
+    Returns
+    -------
+    newarr : np.ma.array
+        Event array
+
+    Description
+    -----------
+    Converts input event array into padded numpy masked array.
+    """
+    return ak.to_numpy(ak.pad_none(arr,target_dim,axis=axis))
 
 def normalize(arr,mean=None,std=None,use_max=False,index=-2,log=False,inplace=False):
     """
@@ -195,7 +217,7 @@ class Constructor:
         (nEvents,nParticles,nKeys).
         """        
         return np.moveaxis(ma.array([batch[key] for key in keys]),(0,1,2),(2,0,1)) #NOTE: Important to use ma.array here!
-
+        ak.to_numpy(ak.pad_none(batch["REC::Particle_px"],targetD,axis=1))
     def setConstruct(self,construct):
         """
         Parameters
