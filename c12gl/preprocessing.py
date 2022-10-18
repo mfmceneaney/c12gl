@@ -165,8 +165,8 @@ def getWebGraph(nNodes,idcs=None):
     """
 
     # Generate fully connected graph
-    l1 = ak.flatten([[el for el in range(k+1,nNodes)] for k in range(nNodes)])
-    l2 = ak.flatten([[k for el in range(k+1,nNodes)] for k in range(nNodes)])
+    l1 = ak.flatten([[el for el in range(k+1,nNodes)] for k in range(nNodes)]) if nNodes>0 else [0]
+    l2 = ak.flatten([[k for el in range(k+1,nNodes)] for k in range(nNodes)]) if nNodes>0 else [0]
 
     # Replace indices if requested
     if idcs is not None:
@@ -265,12 +265,13 @@ class Constructor:
         graphs = []
         for event in datatensor:
             count = ma.count(event[:,0]) #NOTE: This relies on there actually being data...
+            feature_count = ma.count(event[0,:]) #NOTE: This relies on there actually being data...
             if count<=0: continue
             graph = self.construct(
                 count,
-                torch.tensor(event[~event.mask])[0] #NOTE: [0] is important since array is wrapped in torch.tensor
-                if type(event)==np.ma.core.MaskedArray
-                else torch.tensor(event)[0] #NOTE: [0] is important since array is wrapped in torch.tensor
+                torch.tensor(np.reshape(event[~event.mask],(count,feature_count))) #torch.tensor(event[~event.mask])[0] #NOTE: [0] is important since array is wrapped in torch.tensor
+                # if type(event)==np.ma.core.MaskedArray
+                # else torch.tensor(event)[0] #NOTE: [0] is important since array is wrapped in torch.tensor
             ) #NOTE: This needs to be a torch.tensor to add to dgl.graph data with pytorch backend.
             graphs.append(graph)
             
