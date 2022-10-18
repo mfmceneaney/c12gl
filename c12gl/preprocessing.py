@@ -165,8 +165,8 @@ def getWebGraph(nNodes,idcs=None):
     """
 
     # Generate fully connected graph
-    l1 = ak.flatten([[el for el in range(k+1,nNodes)] for k in range(nNodes)]) if nNodes>0 else [0]
-    l2 = ak.flatten([[k for el in range(k+1,nNodes)] for k in range(nNodes)]) if nNodes>0 else [0]
+    l1 = ak.flatten([[el for el in range(k+1,nNodes)] for k in range(nNodes)]) if nNodes>1 else [0]
+    l2 = ak.flatten([[k for el in range(k+1,nNodes)] for k in range(nNodes)]) if nNodes>1 else [0]
 
     # Replace indices if requested
     if idcs is not None:
