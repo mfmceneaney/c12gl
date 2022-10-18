@@ -217,7 +217,7 @@ class Constructor:
         (nEvents,nParticles,nKeys).
         """        
         return np.moveaxis(ma.array([batch[key] for key in keys]),(0,1,2),(2,0,1)) #NOTE: Important to use ma.array here!
-        ak.to_numpy(ak.pad_none(batch["REC::Particle_px"],targetD,axis=1))
+        
     def setConstruct(self,construct):
         """
         Parameters
