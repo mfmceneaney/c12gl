@@ -269,9 +269,9 @@ class Constructor:
             if count<=0: continue
             graph = self.construct(
                 count,
-                torch.tensor(np.reshape(event[~event.mask],(count,feature_count))) #torch.tensor(event[~event.mask])[0] #NOTE: [0] is important since array is wrapped in torch.tensor
-                # if type(event)==np.ma.core.MaskedArray
-                # else torch.tensor(event)[0] #NOTE: [0] is important since array is wrapped in torch.tensor
+                torch.tensor(np.reshape(event[~event.mask],(count,feature_count)))
+                if type(event)==np.ma.core.MaskedArray
+                else torch.tensor(event) #NOTE: might need to index with [0]  since array is wrapped in torch.tensor...
             ) #NOTE: This needs to be a torch.tensor to add to dgl.graph data with pytorch backend.
             graphs.append(graph)
             
