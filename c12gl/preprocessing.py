@@ -527,10 +527,7 @@ class Preprocessor:
         for name in self.branches: #NOTE: Define new branches.
             batch[name] = self.branches[name](batch)
         for name in self.labels:   #NOTE: Create labels for classification. #TODO: COULD JUST GET RID OF THIS SINCE IT'S BASICALLY ADDING A NEW BRANCH...
-            try: batch[name] = self.labels[name](batch)
-            except KeyError:
-                print("DEBUGGING: batch = ",batch)#DEBUGGING
-                print("DEBUGGING: batch.keys() = ",batch.keys())#DEBUGGING
+            batch[name] = self.labels[name](batch)
         for name in self.processes: #NOTE: Preprocess data, e.g., by normalization.
             batch[name] = self.processes[name](batch[name],**self.processkwargs[name])
         return batch
