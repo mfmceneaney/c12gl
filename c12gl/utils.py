@@ -757,7 +757,7 @@ def evaluate(
     ---------
     model : torch.nn.Module, required
     device : string, required
-    eval_loader : dgl.dataloading.GraphDataLoader, optional
+    test_loader : dgl.dataloading.GraphDataLoader, optional
         Default : None
     dataset : string, optional
         Default : ''
