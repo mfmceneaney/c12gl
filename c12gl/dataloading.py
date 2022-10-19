@@ -137,7 +137,7 @@ def loadGraphDataset(
     ngraphs = min(len(ds),max_events) if max_events>0 else len(ds)
 
     # Shuffle entire dataset
-    if shuffle: this_dataset.shuffle() #TODO: Make the shuffling to dataloading non-biased?
+    if shuffle: ds.shuffle() #TODO: Make the shuffling to dataloading non-biased?
 
     # Get training subset
     index1 = int(ngraphs*(split[0] if len(split)>0 else 1))
