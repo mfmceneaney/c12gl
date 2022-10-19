@@ -799,9 +799,8 @@ def evaluate(
     prediction = model(graphs)
     probs_Y    = torch.softmax(prediction, 1)
     argmax_Y   = torch.max(probs_Y, 1)[1].view(-1, 1)
-    test_acc = (labels == argmax_Y.float()).sum().item() / len(labels)
-    if verbose: print('Accuracy of predictions on the test set: {:4f}%'.format(
-        (labels == argmax_Y.float()).sum().item() / len(test_Y) * 100))
+    test_acc   = (labels == argmax_Y.float()).sum().item() / len(labels)
+    if verbose: print('Accuracy of predictions on the test set: {:4f}%'.format(test_acc * 100))
 
     # Copy arrays back to CPU
     labels   = labels.cpu()
