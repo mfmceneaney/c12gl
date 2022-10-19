@@ -210,23 +210,23 @@ class GraphDataset(DGLDataset):
         Parameters
         ----------
         name : str, optional
-            Default : "dataset".
+            Default : "dataset"
         inGraphs : Tensor(dgl.HeteroGraph), optional
-            Default : None.
+            Default : None
         inLabels= : Tensor, optional
-            Default : None.
+            Default : None
         raw_dir : str, optional
-            Default : None.
+            Default : None
         mode : str, optional
-            Default : "mode".
+            Default : "mode"
         url : str, optional
-            Default : None.
+            Default : None
         force_reload : bool, optional
-            Default : False.
+            Default : False
         verbose : bool, optional
-            Default : False.
+            Default : False
         num_classes : int, optional
-            Default : 2.
+            Default : 2
         """
         
         self.inGraphs = inGraphs #NOTE: Set these BEFORE calling super.
