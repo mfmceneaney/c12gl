@@ -181,7 +181,7 @@ def loadGraphDataset(
         pin_memory=pin_memory,
         num_workers=num_workers)
 
-    return train_loader, val_loader, test_loader num_labels, node_feature_dim, edge_feature_dim
+    return train_loader, val_loader, test_loader, num_labels, node_feature_dim, edge_feature_dim
 
 #------------------------- Classes -------------------------#
 # GraphDataset
