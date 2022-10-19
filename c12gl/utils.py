@@ -785,7 +785,7 @@ def evaluate(
 
     # Get test dataset
     ds = GraphDataset(prefix+dataset) if test_loader is None else test_loader.dataset #NOTE: Make sure this is copied into ~/.dgl folder if prefix is not specified.
-    if eval_loader is None:
+    if test_loader is None:
         ngraphs = min(len(ds),max_events) if max_events>0 else len(ds)
         ds      = Subset(ds,range(ngraphs))
 
