@@ -69,7 +69,7 @@ def loadGraphDataset(
     prefix='',
     key='data',
     ekey='',
-    split=(,),
+    split=(),
     max_events=0,
     batch_size=64,
     drop_last=False,
@@ -91,7 +91,7 @@ def loadGraphDataset(
     ekey : string, optional
         Default : ''
     split : tuple, optional
-        Default : (,)
+        Default : ()
     max_events : int, optional
         Default : 0
     batch_size : int, optional
