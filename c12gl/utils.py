@@ -746,26 +746,27 @@ def trainDA(
 def evaluate(
     model,
     device,
-    eval_loader=None,
-    dataset="",
-    prefix="",
-    split=1.0,
-    max_events=1e20,
-    log_dir="logs/",
+    test_loader=None,
+    dataset='',
+    prefix='',
+    max_events=0,
     verbose=True
     ):
     """
     Arguments
     ---------
-    model : torch.nn.Module
-    device : string
+    model : torch.nn.Module, required
+    device : string, required
     eval_loader : dgl.dataloading.GraphDataLoader, optional
+        Default : None
     dataset : string, optional
+        Default : ''
     prefix : string, optional
-    split : float, optional
+        Default : ''
     max_events : int, optional
-    log_dir : string, optional
+        Default : 0
     verbose : boolean, optional
+        Default : True
 
     Returns
     -------
@@ -778,37 +779,39 @@ def evaluate(
     Run model on test data from a dataset or dataloader.
     """
 
-    # Load validation data
-    test_dataset = GraphDataset(prefix+dataset) if eval_loader is None else eval_loader.dataset # Make sure this is copied into ~/.dgl folder
-    if eval_loader is None:
-        test_dataset.load()
-        test_dataset = Subset(test_dataset,range(int(min(len(test_dataset),max_events)*split)))
-
+    # Get model
     model.eval()
-    model      = model.to(device)
+    model  = model.to(device)
 
-    test_bg    = dgl.batch(test_dataset.dataset.graphs[test_dataset.indices.start:test_dataset.indices.stop]) #TODO: Figure out nicer way to use subset
-    test_Y     = test_dataset.dataset.labels[test_dataset.indices.start:test_dataset.indices.stop,0].clone().detach().float().view(-1, 1) #IMPORTANT: keep .view() here
-    test_bg    = test_bg.to(device)
-    test_Y     = test_Y.to(device)
+    # Get test dataset
+    ds = GraphDataset(prefix+dataset) if test_loader is None else test_loader.dataset #NOTE: Make sure this is copied into ~/.dgl folder if prefix is not specified.
+    if eval_loader is None:
+        ngraphs = min(len(ds),max_events) if max_events>0 else len(ds)
+        ds      = Subset(ds,range(ngraphs))
 
-    prediction = model(test_bg)
+    # Get test graphs and labels
+    graphs = dgl.batch(ds.dataset.graphs[ds.indices.start:ds.indices.stop]).to(device) #TODO: Figure out nicer way to use subset
+    labels = ds.dataset.labels[ds.indices.start:ds.indices.stop,0].clone().detach().float().view(-1, 1).to(device) if len(np.shape(ds.data.labels))==2
+                 else ds.dataset.labels[ds.indices.start:ds.indices.stop].clone().detach().float().view(-1, 1).to(device) #IMPORTANT: keep .view() here
+
+    # Get predictions on test dataset
+    prediction = model(graphs)
     probs_Y    = torch.softmax(prediction, 1)
     argmax_Y   = torch.max(probs_Y, 1)[1].view(-1, 1)
-    test_acc = (test_Y == argmax_Y.float()).sum().item() / len(test_Y)
+    test_acc = (labels == argmax_Y.float()).sum().item() / len(labels)
     if verbose: print('Accuracy of predictions on the test set: {:4f}%'.format(
         (test_Y == argmax_Y.float()).sum().item() / len(test_Y) * 100))
 
     # Copy arrays back to CPU
-    test_Y   = test_Y.cpu()
+    labels   = labels.cpu()
     probs_Y  = probs_Y.cpu()
     argmax_Y = argmax_Y.cpu()
 
-    # Get false-positive true-negatives and vice versa
-    decisions_true  = ma.array(test_dataset.dataset.labels[test_dataset.indices.start:test_dataset.indices.stop].clone().detach().float(),
-                                mask=~(torch.squeeze(argmax_Y) == test_dataset.dataset.labels[test_dataset.indices.start:test_dataset.indices.stop,0].clone().detach().float()))
-    decisions_false = ma.array(test_dataset.dataset.labels[test_dataset.indices.start:test_dataset.indices.stop].clone().detach().float(),
-                                mask=~(torch.squeeze(argmax_Y) != test_dataset.dataset.labels[test_dataset.indices.start:test_dataset.indices.stop,0].clone().detach().float()))
+    # Split decisions into true and false arrays
+    decisions_true  = ma.array(ds.dataset.labels[ds.indices.start:ds.indices.stop].clone().detach().float(),
+                                mask=~(torch.squeeze(argmax_Y) == ds.dataset.labels[ds.indices.start:ds.indices.stop,0].clone().detach().float()))
+    decisions_false = ma.array(ds.dataset.labels[ds.indices.start:ds.indices.stop].clone().detach().float(),
+                                mask=~(torch.squeeze(argmax_Y) != ds.dataset.labels[ds.indices.start:ds.indices.stop,0].clone().detach().float()))
 
     return test_acc, argmax_Y, decisions_true, decisions_false
 
