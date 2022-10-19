@@ -791,8 +791,9 @@ def evaluate(
 
     # Get test graphs and labels
     graphs = dgl.batch(ds.dataset.graphs[ds.indices.start:ds.indices.stop]).to(device) #TODO: Figure out nicer way to use subset
-    labels = ds.dataset.labels[ds.indices.start:ds.indices.stop,0].clone().detach().float().view(-1, 1).to(device) if len(np.shape(ds.data.labels))==2
-                 else ds.dataset.labels[ds.indices.start:ds.indices.stop].clone().detach().float().view(-1, 1).to(device) #IMPORTANT: keep .view() here
+    labels = (ds.dataset.labels[ds.indices.start:ds.indices.stop,0].clone().detach().float().view(-1, 1).to(device)
+             if len(np.shape(ds.data.labels))==2
+             else ds.dataset.labels[ds.indices.start:ds.indices.stop].clone().detach().float().view(-1, 1).to(device)) #IMPORTANT: keep .view() here
 
     # Get predictions on test dataset
     prediction = model(graphs)
