@@ -770,9 +770,9 @@ def evaluate(
 
     Returns
     -------
-    Tuple containing test accuracy, model predictions as integer labels,
-    dataset labels for correctly identified graphs, dataset labels for incorrectly
-    identified graphs
+    Tuple containing test accuracy, softmax of model predictions,
+    model predictions as integer labels, dataset labels for correctly
+    identified graphs, dataset labels for incorrectly identified graphs
 
     Description
     -----------
@@ -781,7 +781,7 @@ def evaluate(
 
     # Get model
     model.eval()
-    model  = model.to(device)
+    model = model.to(device)
 
     # Get test dataset
     ds = GraphDataset(prefix+dataset) if test_loader is None else test_loader.dataset #NOTE: Make sure this is copied into ~/.dgl folder if prefix is not specified.
@@ -800,7 +800,7 @@ def evaluate(
     argmax_Y   = torch.max(probs_Y, 1)[1].view(-1, 1)
     test_acc = (labels == argmax_Y.float()).sum().item() / len(labels)
     if verbose: print('Accuracy of predictions on the test set: {:4f}%'.format(
-        (test_Y == argmax_Y.float()).sum().item() / len(test_Y) * 100))
+        (labels == argmax_Y.float()).sum().item() / len(test_Y) * 100))
 
     # Copy arrays back to CPU
     labels   = labels.cpu()
@@ -809,48 +809,54 @@ def evaluate(
 
     # Split decisions into true and false arrays
     decisions_true  = ma.array(ds.dataset.labels[ds.indices.start:ds.indices.stop].clone().detach().float(),
-                                mask=~(torch.squeeze(argmax_Y) == ds.dataset.labels[ds.indices.start:ds.indices.stop,0].clone().detach().float()))
+                                mask=~(torch.squeeze(argmax_Y) == ds.dataset.labels[ds.indices.start:ds.indices.stop].clone().detach().float()))
     decisions_false = ma.array(ds.dataset.labels[ds.indices.start:ds.indices.stop].clone().detach().float(),
-                                mask=~(torch.squeeze(argmax_Y) != ds.dataset.labels[ds.indices.start:ds.indices.stop,0].clone().detach().float()))
+                                mask=~(torch.squeeze(argmax_Y) != ds.dataset.labels[ds.indices.start:ds.indices.stop].clone().detach().float()))
 
-    return test_acc, argmax_Y, decisions_true, decisions_false
+    return test_acc, probs_Y, argmax_Y, decisions_true, decisions_false
 
 def evaluateOnData(
     model,
     device,
-    dataset="",
-    prefix="",
-    split=1.0,
+    dataset='',
+    prefix='',
+    max_events=0,
     ):
 
     """
     Arguments
     ---------
-    model : torch.nn.Module
-    device : torch.device
+    model : torch.nn.Module, required
+    device : torch.device, required
     dataset : string, optional
+        Default : ''
     prefix : string, optional
-    split : float, optional
+        Default : ''
+    max_events : int, optional
+        Default : 0
 
     Returns
     -------
-    Array of predictions and corresponding dataset labels
+    Tuple of softmax of model predictions, model predictions
+    as integer labels, and corresponding dataset labels
 
     Description
     -----------
     Run model on unlabelled test data from a dataset or dataloader.
     """
 
-    # Load validation data
-    test_dataset = GraphDataset(prefix+dataset) # Make sure this is copied into ~/.dgl folder
-    test_dataset.load()
-    test_dataset = Subset(test_dataset,range(int(len(test_dataset)*split)))
-
+    # Get model
     model.eval()
-    model      = model.to(device)
-    test_bg    = dgl.batch(test_dataset.dataset.graphs[test_dataset.indices.start:test_dataset.indices.stop])#TODO: Figure out nicer way to use subset
-    test_bg    = test_bg.to(device)
-    prediction = model(test_bg)
+    model = model.to(device)
+
+    # Load dataset
+    ds      = GraphDataset(prefix+dataset) # Make sure this is copied into ~/.dgl folder
+    ngraphs = min(len(ds),max_events) if max_events>0 else len(ds)
+    ds      = Subset(ds,range(ngraphs))
+
+    # Get prediction on dataset
+    graphs     = dgl.batch(ds.dataset.graphs[ds.indices.start:ds.indices.stop]).to(device) #TODO: Figure out nicer way to use subset
+    prediction = model(graphs)
     probs_Y    = torch.softmax(prediction, 1)
     argmax_Y   = torch.max(probs_Y, 1)[1].view(-1, 1)
 
@@ -859,6 +865,6 @@ def evaluateOnData(
     argmax_Y = argmax_Y.cpu()
 
     # Get dataset labels
-    labels = ma.array(test_dataset.dataset.labels[test_dataset.indices.start:test_dataset.indices.stop].clone().detach().float())
+    labels = ma.array(ds.dataset.labels[ds.indices.start:ds.indices.stop].clone().detach().float())
 
-    return argmax_Y, labels
+    return probs_Y, argmax_Y, labels
