@@ -134,7 +134,7 @@ def loadGraphDataset(
     num_labels       = ds.num_labels
     node_feature_dim = ds.graphs[0].ndata[key].shape[-1]  if  key != '' else 0
     edge_feature_dim = ds.graphs[0].edata[ekey].shape[-1] if ekey != '' else 0
-    ngraphs = min(len(ds),max_events)
+    ngraphs = min(len(ds),max_events) if max_events>0 else len(ds)
 
     # Shuffle entire dataset
     if shuffle: this_dataset.shuffle() #TODO: Make the shuffling to dataloading non-biased?
@@ -213,7 +213,7 @@ class GraphDataset(DGLDataset):
             Default : "dataset"
         inGraphs : Tensor(dgl.HeteroGraph), optional
             Default : None
-        inLabels= : Tensor, optional
+        inLabels : Tensor, optional
             Default : None
         raw_dir : str, optional
             Default : None
