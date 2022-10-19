@@ -3,21 +3,16 @@ Examples
 
 .. _examples:
 
-.. note 
+.. note::
 
-Opening a HIPO File
--------------------
+   This project is under active development.
 
-To open a single HIPO file use the
-``hipopy.hipopy.open`` function.
+Creating a dataset
+------------------
 
-The ``mode`` parameter should be either ``"r"``, ``"w"``,
-or ``"a"`` (read, write, and append).
+.. literalinclude:: ../../tutorials/create_dataset.py
 
-For example:
+Training a model
+----------------
 
->>> import hipopy.hipopy
->>> f = hipopy.hipopy.open('file.hipo',mode='r')
->>> f.show()
-               NEW::bank :     1     1     3
->>> f.read('NEW::bank')
+.. literalinclude:: ../../tutorials/train.py
