@@ -1,36 +1,45 @@
-# Part of Example Pipeline
+#----------------------------------------------------------------------#
+# Example dataset creation script
+# Author: Matthew McEneaney
+# Contact: matthew.mceneaney@duke.edu
+#----------------------------------------------------------------------#
 
+# PyTorch Imports
+import torch.nn as nn
 import ignite.distributed as idist
 
-import torch.nn as nn
-
-import os
-
-import matplotlib.pyplot as plt
-
+# Custom Imports
 from c12gl.models import GIN, MLP
 from c12gl.dataloading import getGraphDatasetInfo, loadGraphDataset
 from c12gl.utils import setPltParams, train, trainDA, evaluate, evaluateOnData
+
+# Random Imports
+import numpy as np
+import matplotlib.pyplot as plt
+import os
 
 #-------------------- TRAINING --------------------#
 #import sys
 #sys.path.append('/Users/mfm45/c12gl')
 #from c12gl.dataloading import loadGraphDataset
 
-dataset = "test_dataset_10_17_22"
-split = 0.0
+#TODO: LOADGRAPHDATASET METHOD IN C12GL
+#TODO: CHECK LABELLING IN DATASET CREATION...
+#TODO: TRY ADDING EVNUM AS TEST DATASET LABEL AND OTHER STUFF.... WITH PARENT INDEXING....
+#TODO: UPDATE C12ANALYSIS TO READ IN CSV FILE TO HASHMAP  ----> SAVED PAGE IN SAFARI
+
+dataset = 'test_dataset_10_18_22'
+split = [0.8,0.1,0.1] #NOTE: #TODO: CONVERT THIS TO FRACTIONS AND UPDATE LOAD_DATASET METHOD IN C12GL
 max_events = 2000
-indices = [0,1600,1800,2000]
 batch_size = 32
 num_workers = 0
 loaders = loadGraphDataset(
                             dataset=dataset,
-                            prefix="",
-                            key="data",
-                            ekey="",
+                            prefix='',
+                            key='data',
+                            ekey='',
                             split=split,
                             max_events=max_events,
-                            indices=indices,
                             batch_size=batch_size,
                             drop_last=False,
                             shuffle=True,
@@ -38,7 +47,7 @@ loaders = loadGraphDataset(
                             pin_memory=True,
                             verbose=True
                             )
-train_loader, val_loader, eval_loader, nclasses, ndata_dim, edata_dim = loaders
+train_loader, val_loader, test_loader, nclasses, ndata_dim, edata_dim = loaders
 
 #-------------------- TRAINING --------------------#
 import torch
@@ -73,12 +82,12 @@ scheduler = optim.lr_scheduler.ReduceLROnPlateau(
                                                 eps=1e-08,
                                                 verbose=True
                                                 )
-criterion = nn.CrossEntropyLoss()
+criterion = nn.CrossEntropyLoss() #BITEL
 max_epochs = 10
-dataset = "test_dataset_10_17_22"
+dataset = "test_dataset"
 prefix = ""
 log_interval = 10
-log_dir = "test_log_dir"
+log_dir = "logs" #NOTE: #TODO: CHECK osp.expanduser and full path in c12gl....
 model_name = 'model'
 verbose = True
 
@@ -139,6 +148,7 @@ print("DEBUGGING: experiment = ",experiment)#DEBUGGING
 # Train model
 train(rank,config)
 
+"""
 # Try training in distributed configuration
 config['distributed'] = True
 
@@ -153,23 +163,22 @@ config = locals()#NOTE: ADDED
 print("DEBUGGING: config = ",config)#DEBUGGING
 with idist.Parallel(backend=backend, **dist_configs) as parallel:
     parallel.run(train, config)
+"""
 
 eval_results = evaluate(
     model,
     device,
-    eval_loader=eval_loader,
-    dataset="",
-    prefix="",
-    split=1.0,
-    max_events=1e20,
-    log_dir=log_dir,
+    test_loader=test_loader,
+    dataset='',
+    prefix='',
+    max_events=0,
     verbose=verbose
     )
 
-test_acc, argmax_Y, decisions_true, decisions_false = eval_results
+test_acc, probs_Y, argmax_Y, decisions_true, decisions_false = eval_results
 
 print("DEBUGGING: np.shape(argmax_Y)        = ",np.shape(argmax_Y))#DEBUGGING
-print("DEBUGGING: np.shpae(decisions_true)  = ",np.shape(decision_true))#DEBUGGING
-print("DEBUGGING: np.shpae(decisions_false) = ",np.shape(decision_false))#DEBUGGING
+print("DEBUGGING: np.shpae(decisions_true)  = ",np.shape(decisions_true))#DEBUGGING
+print("DEBUGGING: np.shpae(decisions_false) = ",np.shape(decisions_false))#DEBUGGING
 
 print("DONE")
