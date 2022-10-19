@@ -155,7 +155,7 @@ def loadGraphDataset(
     if len(split)<1: return train_loader, num_labels, node_feature_dim, edge_feature_dim
 
     # Get validation subset
-    index2 = int(ngraphs*(np.sum(split[:1]) if len(split)>1 else 1)) #NOTE: np.sum is important here!
+    index2 = int(ngraphs*(np.sum(split[:2]) if len(split)>1 else 1)) #NOTE: np.sum(split[:2]) is important here!
     val_ds = Subset(ds,range(index1,index2))
 
     # Create validation dataloader
