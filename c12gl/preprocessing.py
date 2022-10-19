@@ -20,6 +20,7 @@ import hipopy.hipopy as hipopy
 
 #TODO: Check method names and attribute names and make sure camelBack vs. _ convention is consistent
 #TODO: Check doc strings
+#TODO: Multi threading? -> num_workers args... for iterate....
 
 #------------------------- Functions: -------------------------#
 # pad, normalize, getRingGraph, getWebGraph
@@ -160,7 +161,7 @@ def getWebGraph(nNodes,idcs=None):
 
     Description
     -----------
-    Generates a fully connected graph structure from a given number 
+    Generates a fully connected graph structure from a given number
     of nodes or a list of specific indices.
     """
 

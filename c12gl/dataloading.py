@@ -19,8 +19,6 @@ import torch
 # Utility Imports
 import os.path as osp
 
-#TODO: 
-
 #------------------------- Functions -------------------------#
 # getGraphDatasetInfo
 # loadGraphDataset
@@ -36,13 +34,13 @@ def getGraphDatasetInfo(
     Parameters
     ----------
     dataset : str, optional
-        Default : "".
+        Default : ""
     prefix : str, optional
-        Default : "".
+        Default : ""
     key : str, optional
-        Default : "data".
+        Default : "data"
     ekey : str, optional
-        Default : "".
+        Default : ""
 
     Returns
     -------
@@ -59,24 +57,21 @@ def getGraphDatasetInfo(
     """
 
     # Load training data
-    train_dataset = GraphDataset(prefix+dataset) # Make sure this is copied into ~/.dgl folder
+    train_dataset = GraphDataset(prefix+dataset) #NOTE: Make sure this is copied into ~/.dgl folder if prefix not specified.
     num_labels = train_dataset.num_labels
     node_feature_dim = train_dataset.graphs[0].ndata[key].shape[-1]  if  key != '' else 0
     edge_feature_dim = train_dataset.graphs[0].edata[ekey].shape[-1] if ekey != '' else 0
-    train_dataset.load()
-    train_dataset = Subset(train_dataset,range(1))
 
     return num_labels, node_feature_dim, edge_feature_dim
 
 def loadGraphDataset(
-    dataset="",
-    prefix="",
-    key="data",
-    ekey="",
-    split=0.75,
-    max_events=1e5,
-    indices=None,
-    batch_size=1024,
+    dataset='',
+    prefix='',
+    key='data',
+    ekey='',
+    split=(,),
+    max_events=0,
+    batch_size=64,
     drop_last=False,
     shuffle=True,
     num_workers=0,
@@ -88,31 +83,27 @@ def loadGraphDataset(
     Parameters
     ----------
     dataset : string, optional
-        Default : 1024.
+        Default : ''
     prefix : string, optional
-        Default : False.
-    indices : tuple, optional
-        Tuple of start and stop indices to use
+        Default : ''
     key : string, optional
-        Default : "data".
+        Default : 'data'
     ekey : string, optional
-        Default : "".
-    split : float, optional
-        Default : 0.75.
+        Default : ''
+    split : tuple, optional
+        Default : (,)
     max_events : int, optional
-        Default : 1e5.
-    indices : tuple, optional
-        Default : None.
+        Default : 0
     batch_size : int, optional
-        Default : 1024.
+        Default : 64
     drop_last : bool, optional
-        Default : False.
+        Default : False
     shuffle : bool, optional
-        Default : False.
+        Default : True
     num_workers : int, optional
-        Default : 0.
+        Default : 0
     pin_memory : bool, optional
-        Default : True.
+        Default : True
     verbose : bool, optional
         Default : True
 
@@ -122,8 +113,8 @@ def loadGraphDataset(
         Dataloader for training data
     val_loader : dgl.GraphDataLoader
         Dataloader for validation data
-    eval_loader : dgl.GraphDataLoader
-        Dataloader for evaluation data, only returned if >3 indices specified
+    test_loader : dgl.GraphDataLoader
+        Dataloader for testing data, only returned if additional fraction specified in split argument
     num_labels : int
         Number of classification labels for dataset
     node_feature_dim : int
@@ -133,69 +124,64 @@ def loadGraphDataset(
 
     Description
     -----------
-    Load a graph dataset into training and validation loaders based on split fraction.
+    Load a graph dataset into training and validation loaders based on split fractions.
     """
+    # Check normalization of split
+    if len(split)>1 and np.sum(split)!=1.0: raise ValueError('Split fractions should add to one if more than one specified.')
 
     # Load training data
-    this_dataset = GraphDataset(prefix+dataset) # Make sure this is copied into ~/.dgl folder
-    this_dataset.load()
-    num_labels = this_dataset.num_labels
-    node_feature_dim = this_dataset.graphs[0].ndata[key].shape[-1]  if  key != '' else 0
-    edge_feature_dim = this_dataset.graphs[0].edata[ekey].shape[-1] if ekey != '' else 0
+    ds = GraphDataset(prefix+dataset) #NOTE: Make sure this is copied into ~/.dgl folder if prefix not specified.
+    num_labels       = ds.num_labels
+    node_feature_dim = ds.graphs[0].ndata[key].shape[-1]  if  key != '' else 0
+    edge_feature_dim = ds.graphs[0].edata[ekey].shape[-1] if ekey != '' else 0
+    ngraphs = min(len(ds),max_events)
 
     # Shuffle entire dataset
-    if shuffle: this_dataset.shuffle() #TODO: Make the shuffling to dataloading non-biased???
+    if shuffle: this_dataset.shuffle() #TODO: Make the shuffling to dataloading non-biased?
 
     # Get training subset
-    if indices is not None:
-        if len(indices)<3: raise IndexError("Length of indices argument must be >=3.")
-        if (indices[0]>=len(this_dataset) or indices[1]>=len(this_dataset)): raise IndexError("First or middle index cannot be greater than length of dataset.")
-        if indices[0]>indices[1] or indices[1]>indices[2] or (len(indices)>3 and indices[2]>indices[3]): raise IndexError("Make sure indices are in ascending order left to right.")
-    index = int(min(len(this_dataset),max_events)*split)
-    train_indices = range(index) if indices is None else range(indices[0],int(min(len(this_dataset),indices[1])))
-    train_dataset = Subset(this_dataset,train_indices)
+    index1 = int(ngraphs*(split[0] if len(split)>0 else 1))
+    train_ds = Subset(ds,range(index1))
 
     # Create training dataloader
     train_loader = GraphDataLoader(
-        train_dataset,
+        train_ds,
         batch_size=batch_size,
         drop_last=drop_last,
         shuffle=shuffle,
         pin_memory=pin_memory,
         num_workers=num_workers)
 
-    # Load validation data
-    index2 = int(min(len(this_dataset),max_events))
-    val_indices = range(index,index2) if indices is None else range(indices[1],int(min(len(this_dataset),indices[2])))
-    val_dataset = Subset(this_dataset,val_indices)
+    if len(split)<1: return train_loader, num_labels, node_feature_dim, edge_feature_dim
+
+    # Get validation subset
+    index2 = int(ngraphs*(np.sum(split[:1]) if len(split)>1 else 1)) #NOTE: np.sum is important here!
+    val_ds = Subset(ds,range(index1,index2))
+
+    # Create validation dataloader
+    val_loader = GraphDataLoader(
+        val_ds,
+        batch_size=batch_size,
+        drop_last=drop_last,
+        shuffle=shuffle,
+        pin_memory=pin_memory,
+        num_workers=num_workers)
+
+    if len(split)<=2: return train_loader, val_loader, num_labels, node_feature_dim, edge_feature_dim
+
+    # Get testing subset
+    test_ds = Subset(ds,range(index2,ngraphs))
 
     # Create testing dataloader
-    val_loader = GraphDataLoader(
-        val_dataset,
+    test_loader = GraphDataLoader(
+        test_ds,
         batch_size=batch_size,
         drop_last=drop_last,
         shuffle=shuffle,
         pin_memory=pin_memory,
         num_workers=num_workers)
 
-    if indices is not None and len(indices)>=4:
-
-        # Load validation data
-        eval_indices = range(indices[2],last_index) if indices is None else range(indices[2],int(min(len(this_dataset),indices[3])))
-        eval_dataset = Subset(this_dataset,eval_indices)
-
-        # Create testing dataloader
-        eval_loader = GraphDataLoader(
-            eval_dataset,
-            batch_size=batch_size,
-            drop_last=drop_last,
-            shuffle=shuffle,
-            pin_memory=pin_memory,
-            num_workers=num_workers)
-
-        return train_loader, val_loader, eval_loader, num_labels, node_feature_dim, edge_feature_dim
-    else:
-        return train_loader, val_loader, num_labels, node_feature_dim, edge_feature_dim
+    return train_loader, val_loader, test_loader num_labels, node_feature_dim, edge_feature_dim
 
 #------------------------- Classes -------------------------#
 # GraphDataset
