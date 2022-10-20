@@ -30,13 +30,12 @@ from ignite.handlers import global_step_from_engine, EarlyStopping
 from ignite.contrib.handlers.mlflow_logger import MLflowLogger
 
 # Utility Imports
-import datetime, os, itertools, json
+import datetime, os, itertools
 
 # Local Imports
 from .dataloading import getGraphDatasetInfo, loadGraphDataset, GraphDataset
 
 #TODO: Fix/update definitions
-#TODO: Add docstrings
 
 #------------------------- Functions -------------------------#
 # setPltParams
@@ -138,10 +137,6 @@ def train(
     
     # Create log directory
     os.makedirs(log_dir, exist_ok=True)
-
-    # Save config to json
-    with open(os.path.join(log_dir,'config.json'), 'w') as jf:
-        jf.write(json.dumps(config))
 
     # Create logs for metrics
     logs={'train':{'loss':[],'accuracy':[]}, 'val':{'loss':[],'accuracy':[]}}
