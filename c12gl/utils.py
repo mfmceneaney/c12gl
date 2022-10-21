@@ -85,7 +85,7 @@ def train(
     config : dict
 
     Entries in config
-    ---------------------------
+    -----------------
     model : torch.nn.Module, required
     device : str, required
     train_loader : dgl.dataloading.GraphDataloader, required
@@ -108,7 +108,7 @@ def train(
         Default : True
     distributed : boolean, optional
         Default : False
-     mlflow : boolean, optional
+    mlflow : boolean, optional
         Default : False
 
     Returns
@@ -401,32 +401,18 @@ def train(
     return logs
 
 def trainDA(
-    args,
-    model,
-    classifier,
-    discriminator,
-    device,
-    train_loader,
-    val_loader,
-    dom_train_loader,
-    dom_val_loader,
-    model_optimizer,
-    classifier_optimizer,
-    discriminator_optimizer,
-    scheduler,
-    train_criterion,
-    dom_criterion,
-    alpha,
-    max_epochs,
-    log_interval=10,
-    log_dir="logs/",
-    save_path="model",
-    verbose=True
+        rank,
+        config
     ):
-    #TODO: GET RID OF ARGS ARGUMENT??!?!!
+
     """
     Parameters
     ----------
+    rank : int
+    config : dict
+
+    Entries in config
+    -----------------
     args : argparse.Namespace, required
     model : torch.nn.Module, required
     classifier : torch.nn.Module, required
@@ -447,12 +433,16 @@ def trainDA(
     log_interval : int, optional
         Default : 10
     log_dir : str, optional
-        Default : "logs/"
-    save_path : str, optional
-        Default : "model"
+        Default : 'logs'
+    model_name : str, optional
+        Default : 'model'
     verbose : bool, optional
         Default : True
-
+    distributed : boolean, optional
+        Default : False
+    mlflow : boolean, optional
+        Default : False
+    
     Returns
     -------
     logs : dict
@@ -463,12 +453,97 @@ def trainDA(
     Train a GNN using a Domain Adversarial approach.
     """
 
+    # Get configuration parameters
+    model                   = config['model']
+    classifier              = config['classifier']
+    discriminator           = config['discriminator']
+    device                  = config['device']
+    train_loader            = config['train_loader']
+    val_loader              = config['val_loader']
+    dom_train_loader        = config['dom_train_loader']
+    dom_val_loader          = config['dom_val_loader']
+    model_optimizer         = config['model_optimizer']
+    classifier_optimizer    = config['classifier_optimizer']
+    discriminator_optimizer = config['discriminator_optimizer']
+    scheduler               = config['scheduler']
+    train_criterion         = config['train_criterion']
+    dom_criterion           = config['dom_criterion']
+    max_epochs              = config['max_epochs']
+    log_interval            = config['log_interval']
+    log_dir                 = config['log_dir']
+    model_name              = config['model_name']
+    verbose                 = config['verbose']
+
     # Create log directory
     os.makedirs(log_dir, exist_ok=True)
 
     # Logs for matplotlib plots
     logs={'train':{'train_loss':[],'train_accuracy':[],'dom_loss':[],'dom_accuracy':[]},
             'val':{'train_loss':[],'train_accuracy':[],'dom_loss':[],'dom_accuracy':[]}}
+
+    # Distributed setup
+    if 'distributed' in config.keys() and config['distributed']:
+        
+        # Show info if requested
+        if verbose: print(
+            idist.get_rank(),
+            ": run with config:",
+            config,
+            "- backend=",
+            idist.backend(),
+            "- world size",
+            idist.get_world_size(),
+        )
+
+        device = idist.device()
+
+        # Convert dataloaders to distributed form
+        train_loader = idist.auto_dataloader(
+            train_loader.dataset,
+            collate_fn=train_loader.collate_fn,
+            batch_size=train_loader.batch_size,
+            num_workers=train_loader.num_workers,
+            shuffle=True,
+            pin_memory=train_loader.pin_memory,
+            drop_last=train_loader.drop_last
+        )
+        val_loader = idist.auto_dataloader(
+            val_loader.dataset,
+            collate_fn=val_loader.collate_fn,
+            batch_size=val_loader.batch_size,
+            num_workers=val_loader.num_workers,
+            shuffle=True,
+            pin_memory=val_loader.pin_memory,
+            drop_last=val_loader.drop_last
+        )
+
+        # Convert domain dataloaders to distributed form
+        dom_train_loader = idist.auto_dataloader(
+            dom_train_loader.dataset,
+            collate_fn=dom_train_loader.collate_fn,
+            batch_size=dom_train_loader.batch_size,
+            num_workers=dom_train_loader.num_workers,
+            shuffle=True,
+            pin_memory=dom_train_loader.pin_memory,
+            drop_last=dom_train_loader.drop_last
+        )
+        dom_val_loader = idist.auto_dataloader(
+            dom_val_loader.dataset,
+            collate_fn=dom_val_loader.collate_fn,
+            batch_size=dom_val_loader.batch_size,
+            num_workers=dom_val_loader.num_workers,
+            shuffle=True,
+            pin_memory=dom_val_loader.pin_memory,
+            drop_last=dom_val_loader.drop_last
+        )
+
+        # Model, criterion, optimizer setup
+        model         = idist.auto_model(model)
+        classifier    = idist.auto_model(classifier)
+        discriminator = idist.auto_model(discriminator)
+        model_optimizer         = idist.auto_optim(model_optimizer)
+        classifier_optimizer    = idist.auto_optim(classifier_optimizer)
+        discriminator_optimizer = idist.auto_optim(discriminator_optimizer)
 
     # Continuously sample target domain data for training and validation
     dom_train_set = itertools.cycle(dom_train_loader)
@@ -481,37 +556,35 @@ def trainDA(
         model.train()
 
         # Get domain data
-        tgt = dom_train_set.__next__()[0] #NOTE: This returns [dgl.HeteroGraph,torch.tensor] for graph and labels.
-        tgt = tgt.to(device)
+        dom_x = dom_train_set.__next__()[0] #NOTE: This returns [dgl.HeteroGraph,torch.tensor] for graph and labels.
+        dom_x = dom_x.to(device)
 
         # Get predictions and loss from data and labels
-        x, label     = batch
-        train_labels = label[:,0].clone().detach().long() #NOTE: This assumes labels is 2D.
-        x            = x.to(device)
-        train_labels = train_labels.to(device)
+        train_x      = batch[0].to(device)
+        train_labels = batch[1][:,0].clone().detach().long().to(device) if len(np.shape(batch[1]))==2 else batch[1].clone().detach().long().to(device) #NOTE: This assumes labels is 2D and classification labels are integers
 
         # Concatenate classification data and domain data
-        x = dgl.unbatch(x)
-        tgt = dgl.unbatch(tgt)
-        nLabelled   = len(x)
-        nUnlabelled = len(tgt)
-        x.extend(tgt)
-        x = dgl.batch(x) #NOTE: Training and domain data must have the same schema for this to work.
+        train_x     = dgl.unbatch(train_x)
+        dom_x       = dgl.unbatch(dom_x)
+        nLabelled   = len(train_x)
+        nUnlabelled = len(dom_x)
+        train_x.extend(dom_x)
+        train_x     = dgl.batch(train_x) #NOTE: Training and domain data must have the same schema for this to work.
 
         # Get hidden representation from model on training and domain data
-        h = model(x)
+        h = model(train_x)
         
         # Step the domain discriminator on training and domain data
-        dom_y = discriminator(h.detach())
+        dom_y      = discriminator(h.detach())
         dom_labels = torch.cat([torch.ones(nLabelled,dtype=torch.long), torch.zeros(nUnlabelled,dtype=torch.long)], dim=0).to(device) #NOTE: Make sure domain label lengths match actual batches at the end.
-        dom_loss = dom_criterion(dom_y, dom_labels) #NOTE: Using activation function like nn.Sigmoid() at end of model is important since the predictions need to be in [0,1].
+        dom_loss   = dom_criterion(dom_y, dom_labels) #NOTE: Using activation function like nn.Sigmoid() at end of model is important since the predictions need to be in [0,1].
         discriminator.zero_grad()
         dom_loss.backward()
         discriminator_optimizer.step()
         
         # Step the classifier on training data
-        train_y = classifier(h[:nLabelled]) #NOTE: Only train on labelled (i.e., training) data, not domain data.
-        dom_y = discriminator(h)
+        train_y    = classifier(h[:nLabelled]) #NOTE: Only train on labelled (i.e., training) data, not domain data.
+        dom_y      = discriminator(h)
         train_loss = train_criterion(train_y, train_labels)
         dom_loss   = dom_criterion(dom_y, dom_labels) #NOTE: Using nn.Sigmoid() is important since the predictions need to be in [0,1].
 
@@ -531,30 +604,27 @@ def trainDA(
         model_optimizer.step()
 
         # Apply softmax and get accuracy on training data
-        train_true_y = train_labels.clone().detach().float().view(-1, 1) #NOTE: Labels for cross entropy loss have to be (N) shaped if input is (N,C) shaped.
-        train_probs_y = torch.softmax(train_y, 1)
-        train_argmax_y = torch.max(train_probs_y, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
-        train_acc = (train_true_y == train_argmax_y.float()).sum().item() / len(train_true_y)
+        train_prediction_softmax = torch.softmax(train_y, 1)
+        train_prediction         = torch.max(train_prediction_softmax, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
+        train_acc                = (train_labels == train_prediction.float()).sum().item() / len(train_labels)
 
         # Apply softmax and get accuracy on domain data
-        dom_true_y = dom_labels.clone().detach().float().view(-1, 1) #NOTE: Activation should already be a part of the discriminator
-        dom_argmax_y = torch.max(dom_y, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
-        dom_acc = (dom_true_y == dom_argmax_y.float()).sum().item() / len(dom_true_y)
+        dom_prediction_softmax = torch.softmax(dom_y, 1)
+        dom_prediction         = torch.max(dom_prediction_softmax, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
+        dom_acc                = (dom_labels == dom_prediction.float()).sum().item() / len(dom_labels)
 
         return {
-                'alpha': alpha,
-                'train_y': train_y, #CLASSIFIER OUTPUT
-                'train_probs_y': train_probs_y,
-                'train_true_y': train_labels, #NOTE: Need this for some reason?
-                'train_argmax_y': train_argmax_y,
-                'train_loss': train_loss.detach().item(),
-                'train_accuracy': train_acc,
-                'dom_y': dom_y, #DISCRIMINATOR OUTPUT
-                'dom_true_y': dom_labels, #NOTE: Need this for some reason?
-                'dom_argmax_y': dom_argmax_y,
+                'y': train_labels,
+                'prediction_raw': train_y,
+                'prediction': train_prediction,
+                'loss': train_loss.detach().item(),
+                'accuracy': train_acc,
+                'dom_y': dom_labels,
+                'dom_prediction_raw': dom_labels,
+                'dom_prediction': dom_prediction,
                 'dom_loss': dom_loss.detach().item(),
                 'dom_accuracy': dom_acc,
-                'tot_loss': tot_loss.detach().item() #TOTAL LOSS
+                'tot_loss': tot_loss.detach().item()
                 }
 
     # Create validation function
@@ -566,95 +636,90 @@ def trainDA(
         with torch.no_grad(): #NOTE: Important to call both model.eval and with torch.no_grad()! See https://stackoverflow.com/questions/55627780/evaluating-pytorch-models-with-torch-no-grad-vs-model-eval.
             
             # Get domain data
-            tgt = dom_val_set.__next__()[0] #NOTE: This returns [dgl.HeteroGraph,torch.tensor] for graph and labels.
-            tgt = tgt.to(device)
+            dom_x = dom_val_set.__next__()[0] #NOTE: This returns [dgl.HeteroGraph,torch.tensor] for graph and labels.
+            dom_x = dom_x.to(device)
 
             # Get predictions and loss from data and labels
-            x, label     = batch
-            train_labels = label[:,0].clone().detach().long() #NOTE: This assumes labels is 2D.
-            x            = x.to(device)
-            train_labels = train_labels.to(device)
+            train_x      = batch[0].to(device)
+            train_labels = batch[1][:,0].clone().detach().long().to(device) if len(np.shape(batch[1]))==2 else batch[1].clone().detach().long().to(device) #NOTE: This assumes labels is 2D and classification labels are integers
 
             # Concatenate classification data and domain data
-            x = dgl.unbatch(x)
-            tgt = dgl.unbatch(tgt)
-            nLabelled   = len(x)
-            nUnlabelled = len(tgt)
-            x.extend(tgt)
-            x = dgl.batch(x) #NOTE: Training and domain data must have the same schema for this to work.
+            train_x     = dgl.unbatch(train_x)
+            dom_x       = dgl.unbatch(dom_x)
+            nLabelled   = len(train_x)
+            nUnlabelled = len(dom_x)
+            train_x.extend(dom_x)
+            train_x     = dgl.batch(train_x) #NOTE: Training and domain data must have the same schema for this to work.
 
             # Get hidden representation from model on training and domain data
-            h = model(x)
+            h = model(train_x)
             
             # Step the domain discriminator on training and domain data
-            dom_y = discriminator(h.detach())
+            dom_y      = discriminator(h.detach())
             dom_labels = torch.cat([torch.ones(nLabelled,dtype=torch.long), torch.zeros(nUnlabelled,dtype=torch.long)], dim=0).to(device) #NOTE: Make sure domain label lengths match actual batches at the end.
-            dom_loss = dom_criterion(dom_y, dom_labels) #NOTE: Using activation function like nn.Sigmoid() at end of model is important since the predictions need to be in [0,1].
+            dom_loss   = dom_criterion(dom_y, dom_labels) #NOTE: Using activation function like nn.Sigmoid() at end of model is important since the predictions need to be in [0,1].
             
             # Step the classifier on training data
-            train_y = classifier(h[:nLabelled]) #NOTE: Only evaluate on labelled (i.e., training) data, not domain data.
-            dom_y = discriminator(h)
+            train_y    = classifier(h[:nLabelled]) #NOTE: Only train on labelled (i.e., training) data, not domain data.
+            dom_y      = discriminator(h)
             train_loss = train_criterion(train_y, train_labels)
-            dom_loss   = dom_criterion(dom_y, dom_labels) #NOTE: Using activation like nn.Sigmoid() on discriminator is important since the predictions need to be in [0,1].
+            dom_loss   = dom_criterion(dom_y, dom_labels) #NOTE: Using nn.Sigmoid() is important since the predictions need to be in [0,1].
 
             # Get total loss using lambda coefficient for epoch
             tot_loss = train_loss - alpha * dom_loss
 
             # Apply softmax and get accuracy on training data
-            train_true_y = train_labels.clone().detach().float().view(-1, 1) #NOTE: Labels for cross entropy loss have to be (N) shaped if input is (N,C) shaped.
-            train_probs_y = torch.softmax(train_y, 1)
-            train_argmax_y = torch.max(train_probs_y, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
-            train_acc = (train_true_y == train_argmax_y.float()).sum().item() / len(train_true_y)
+            train_prediction_softmax = torch.softmax(train_y, 1)
+            train_prediction         = torch.max(train_prediction_softmax, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
+            train_acc                = (train_labels == train_prediction.float()).sum().item() / len(train_labels)
 
             # Apply softmax and get accuracy on domain data
-            dom_true_y = dom_labels.clone().detach().float().view(-1, 1) #NOTE: Activation should already be a part of the discriminator
-            dom_argmax_y = torch.max(dom_y, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
-            dom_acc = (dom_true_y == dom_argmax_y.float()).sum().item() / len(dom_true_y)
+            dom_prediction_softmax = torch.softmax(dom_y, 1)
+            dom_prediction         = torch.max(dom_prediction_softmax, 1)[1].view(-1, 1) #TODO: Could set limit for classification? something like np.where(arg_max_Y>limit)
+            dom_acc                = (dom_labels == dom_prediction.float()).sum().item() / len(dom_labels)
 
         return {
-                'alpha': alpha,
-                'train_y': train_y, #CLASSIFIER OUTPUT
-                'train_probs_y': train_probs_y,
-                'train_true_y': train_labels, #NOTE: Need this for some reason?
-                'train_argmax_y': train_argmax_y,
-                'train_loss': train_loss.detach().item(),
-                'train_accuracy': train_acc,
-                'dom_y': dom_y, #DISCRIMINATOR OUTPUT
-                'dom_true_y': dom_labels, #NOTE: Need this for some reason?
-                'dom_argmax_y': dom_argmax_y,
+                'y': train_labels,
+                'prediction_raw': train_y,
+                'prediction': train_prediction,
+                'loss': train_loss.detach().item(),
+                'accuracy': train_acc,
+                'dom_y': dom_labels,
+                'dom_prediction_raw': dom_labels,
+                'dom_prediction': dom_prediction,
                 'dom_loss': dom_loss.detach().item(),
                 'dom_accuracy': dom_acc,
-                'tot_loss': tot_loss.detach().item() #TOTAL LOSS
+                'tot_loss': tot_loss.detach().item()
                 }
 
     # Create trainer
     trainer = Engine(train_step)
 
     # Add training metrics for classifier
-    train_accuracy  = Accuracy(output_transform=lambda x: [x['train_probs_y'], x['train_true_y']])
+    train_accuracy  = Accuracy(output_transform=lambda x: [x['prediction'], x['y']])
     train_accuracy.attach(trainer, 'train_accuracy')
-    train_loss      = Loss(train_criterion,output_transform=lambda x: [x['train_y'], x['train_true_y']])
+    train_loss      = Loss(train_criterion,output_transform=lambda x: [x['prediction_raw'], x['y']])
     train_loss.attach(trainer, 'train_loss')
 
     # Add training metrics for discriminator
-    dom_accuracy  = Accuracy(output_transform=lambda x: [x['dom_argmax_y'], x['dom_true_y']])
+    dom_accuracy  = Accuracy(output_transform=lambda x: [x['dom_prediction'], x['dom_y']])
     dom_accuracy.attach(trainer, 'dom_accuracy')
-    dom_loss      = Loss(dom_criterion,output_transform=lambda x: [x['dom_y'], x['dom_true_y']])
+    dom_loss      = Loss(dom_criterion,output_transform=lambda x: [x['dom_prediction_raw'], x['dom_y']])
     dom_loss.attach(trainer, 'dom_loss')
 
     # Create evaluator
     evaluator = Engine(val_step)
 
     # Add validation metrics for classifier
-    val_accuracy  = Accuracy(output_transform=lambda x: [x['train_probs_y'], x['train_true_y']])
+    val_accuracy  = Accuracy(output_transform=lambda x: [x['prediction'], x['y']])
     val_accuracy.attach(evaluator, 'train_accuracy')
-    val_loss      = Loss(train_criterion,output_transform=lambda x: [x['train_y'], x['train_true_y']])
+    val_loss      = Loss(train_criterion,output_transform=lambda x: [x['prediction_raw'], x['y']])
     val_loss.attach(evaluator, 'train_loss')
 
     # Add validation metrics for discriminator
-    val_dom_accuracy  = Accuracy(output_transform=lambda x: [x['dom_argmax_y'], x['dom_true_y']])
+    val_dom_accuracy  = Accuracy(output_transform=lambda x: [x['dom_prediction'], x['dom_y']])
     val_dom_accuracy.attach(evaluator, 'dom_accuracy')
-    val_dom_loss      = Loss(dom_criterion,output_transform=lambda x: [x['dom_y'], x['dom_true_y']])
+    val_dom_loss      = Loss(dom_criterion,output_transform=lambda x: [x['dom_prediction_raw'], x['dom_y']])
     val_dom_loss.attach(evaluator, 'dom_loss')
 
     # # Set up early stopping
@@ -739,6 +804,74 @@ def trainDA(
     plt.ylabel('accuracy')
     plt.xlabel('epoch')
     f_acc.savefig(os.path.join(log_dir,'training_accuracy.png'))
+
+    # Run MLFlow routines if requested
+    if 'mlflow' in config.keys() and config['mlflow']:
+
+        # Start MLFlow run
+        mlflow.start_run()#NOTE: ADDED 10/17/22
+        run = mlflow.active_run()
+        print("Active run_id: {}".format(run.info.run_id))
+
+        # Create MLFlow logger
+        tracking_uri = config['tracking_uri'] if 'tracking_uri' in config.keys() else '' #TODO: Make this an option
+        mlflow_logger = MLflowLogger(tracking_uri=tracking_uri)
+
+        # Log experiment parameters:                                                                                                                                                                                                            
+        mlflow.set_tag("trial_number",config['trial_number'] if 'trial_number' in config.keys() else -1)#DEBUGGING ADDED                                                                                                                                                                                        
+        mlflow_logger.log_params({
+            "seed": config['seed'] if 'seed' in config.keys() else -1,                                                                                                                                                                                                                    
+            "batch_size": batch_size,
+            "model": model.__class__.__name__,
+
+            "pytorch version": torch.__version__,
+            "ignite version": ignite.__version__,
+            "cuda version": torch.version.cuda,
+            "device name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else str(-1),
+            "trial number": config['trial_number'] if 'trial_number' in config.keys() else -1
+        })
+
+        # Attach the logger to the trainer to log training loss at each iteration
+        mlflow_logger.attach_output_handler(
+            trainer,
+            event_name=Events.ITERATION_COMPLETED,
+            tag="training",
+            output_transform=lambda output : output['loss']
+        )
+
+        # Attach the logger to the evaluator on the training dataset after each epoch
+        mlflow_logger.attach_output_handler(
+            trainer,
+            event_name=Events.EPOCH_COMPLETED,
+            tag="training",
+            metric_names=["loss", "accuracy"],
+            global_step_transform=global_step_from_engine(trainer),
+        )
+
+        # Attach the logger to the evaluator on the validation dataset after each epoch
+        mlflow_logger.attach_output_handler(
+            evaluator,
+            event_name=Events.EPOCH_COMPLETED,
+            tag="validation",
+            metric_names=["loss", "accuracy"],
+            global_step_transform=global_step_from_engine(trainer)
+        )
+
+        # Attach the logger to the trainer to log optimizer's parameters, e.g. learning rate at each iteration
+        mlflow_logger.attach_opt_params_handler(
+            trainer,
+            event_name=Events.ITERATION_STARTED,
+            optimizer=optimizer,
+            param_name='lr'  # optional
+        )
+        
+        # Save model in MLFlow format
+        mlflow_logger.pytorch.log_model(model,model_name)
+        
+        mlflow.log_figure(f_loss, 'training_loss.png')
+        mlflow.log_figure(f_acc,  'training_accuracy.png')
+        
+        mlflow.end_run()
 
     return logs
     
