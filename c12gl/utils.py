@@ -468,6 +468,7 @@ def trainDA(
     scheduler               = config['scheduler']
     train_criterion         = config['train_criterion']
     dom_criterion           = config['dom_criterion']
+    alpha                   = config['alpha']
     max_epochs              = config['max_epochs']
     log_interval            = config['log_interval']
     log_dir                 = config['log_dir']
