@@ -942,11 +942,11 @@ def evaluate(
 
     # Split decisions into true and false arrays
     decisions_true  = ma.array(ds.dataset.labels[ds.indices.start:ds.indices.stop].clone().detach().float(),
-                                mask=~([[ el for idx in range(np.shape(ds.dataset.labels)[1])] for el in torch.squeeze(argmax_Y) == ds.dataset.labels[ds.indices.start:ds.indices.stop,0].clone().detach().float()]
+                                mask=([[ el for idx in range(np.shape(ds.dataset.labels)[1])] for el in torch.squeeze(argmax_Y) != ds.dataset.labels[ds.indices.start:ds.indices.stop,0].clone().detach().float()]
                                 if len(np.shape(ds.dataset.labels))==2
                                 else torch.squeeze(argmax_Y) == ds.dataset.labels[ds.indices.start:ds.indices.stop].clone().detach().float()))
     decisions_false = ma.array(ds.dataset.labels[ds.indices.start:ds.indices.stop].clone().detach().float(),
-                                mask=~([[ el for idx in range(np.shape(ds.dataset.labels)[1])] for el in torch.squeeze(argmax_Y) != ds.dataset.labels[ds.indices.start:ds.indices.stop,0].clone().detach().float()]
+                                mask=([[ el for idx in range(np.shape(ds.dataset.labels)[1])] for el in torch.squeeze(argmax_Y) == ds.dataset.labels[ds.indices.start:ds.indices.stop,0].clone().detach().float()]
                                 if len(np.shape(ds.dataset.labels))==2
                                 else torch.squeeze(argmax_Y) != ds.dataset.labels[ds.indices.start:ds.indices.stop].clone().detach().float()))
 
