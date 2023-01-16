@@ -202,7 +202,7 @@ class Constructor:
     def __init__(self,construct=None):
         self.construct = construct
 
-    def getDataTensor(self,batch,keys): #TODO: Put in constructor object
+    def getDataTensor(self,batch,keys,target_dim=0,axis=1): #TODO: Put in constructor object
         """
         Parameters
         ----------
@@ -217,8 +217,8 @@ class Constructor:
         dimension (nKeys,nEvents,nParticles) to a numpy array of dimension
         (nEvents,nParticles,nKeys).
         """        
-        return np.moveaxis(ma.array([batch[key] for key in keys]),(0,1,2),(2,0,1)) #NOTE: Important to use ma.array here!
-        
+        if target_dim>0: return np.moveaxis(ma.array([pad(batch[key],target_dim=target_dim,axis=axis) for key in keys]),(0,1,2),(2,0,1)) #NOTE: Important to use ma.array here!
+        else: return np.moveaxis(ma.array([batch[key] for key in keys]),(0,1,2),(2,0,1)) #NOTE: Important to use ma.array here!
     def setConstruct(self,construct):
         """
         Parameters
