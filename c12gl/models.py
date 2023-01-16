@@ -38,10 +38,10 @@ class Concatenate(nn.Module):
         """
         return self.name
 
-class SigmoidMLP(nn.Module):
-    """SigmoidMLP with linear output"""
+class SoftmaxMLP(nn.Module):
+    """SoftmaxMLP with linear output"""
     def __init__(self, num_layers, input_dim, hidden_dim, output_dim):
-        """SigmoidMLP layers construction
+        """SoftmaxMLP layers construction
 
         Parameters
         ----------
@@ -54,7 +54,7 @@ class SigmoidMLP(nn.Module):
         output_dim: int
             The number of classes for prediction
         """
-        super(SigmoidMLP, self).__init__()
+        super(SoftmaxMLP, self).__init__()
         self.linear_or_not = True  # default is linear model
         self.num_layers = num_layers
         self.output_dim = output_dim
@@ -77,18 +77,18 @@ class SigmoidMLP(nn.Module):
 
             for layer in range(num_layers - 1):
                 self.batch_norms.append(nn.BatchNorm1d((hidden_dim)))
-        self.sigmoid = nn.Sigmoid()
+        self.softmax = nn.Softmax(dim=0)
 
     def forward(self, x):
         if self.linear_or_not:
             # If linear model
-            return self.sigmoid(self.linear(x))
+            return self.softmax(self.linear(x))
         else:
             # If MLP
             h = x
             for i in range(self.num_layers - 1):
                 h = F.relu(self.batch_norms[i](self.linears[i](h)))
-            return self.sigmoid(self.linears[-1](h))
+            return self.softmax(self.linears[-1](h))
 
 # GIN ARCHITECTURE
 """
