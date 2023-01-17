@@ -219,6 +219,7 @@ class Constructor:
         """        
         if target_dim>0: return np.moveaxis(ma.array([pad(batch[key],target_dim=target_dim,axis=axis) for key in keys]),(0,1,2),(2,0,1)) #NOTE: Important to use ma.array here!
         else: return np.moveaxis(ma.array([batch[key] for key in keys]),(0,1,2),(2,0,1)) #NOTE: Important to use ma.array here!
+        
     def setConstruct(self,construct):
         """
         Parameters
