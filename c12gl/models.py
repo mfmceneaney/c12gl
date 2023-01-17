@@ -14,7 +14,7 @@ from dgl.nn.pytorch.glob import SumPooling, AvgPooling, MaxPooling
 
 #------------------------- Classes -------------------------#
 # Concatenate
-# SigmoidMLP
+# SoftmaxMLP
 # ApplyNodeFunc
 # MLP
 # GIN

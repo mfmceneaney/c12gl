@@ -7,7 +7,7 @@ import optuna
 from optuna.samplers import TPESampler
 
 # Local Imports
-from .models import GIN, Concatenate, SigmoidMLP
+from .models import GIN, Concatenate, SoftmaxMLP
 from .dataloading import getGraphDatasetInfo, loadGraphDataset, GraphDataset
 from .utils import train, trainDA, evaluate, evaluateOnData
 
@@ -248,8 +248,8 @@ def optimizationStudyDA(
         model = GIN(nlayers, nmlp, nfeatures,
                 hdim, hdim, do, args.learn_eps, args.npooling,
                 args.gpooling).to(device)
-        classifier = SigmoidMLP(nmlp_head, hdim, hdim_head, nclasses).to(device)
-        discriminator = SigmoidMLP(nmlp_head, hdim, hdim_head, n_domains).to(device)
+        classifier = SoftmaxMLP(nmlp_head, hdim, hdim_head, nclasses).to(device)
+        discriminator = SoftmaxMLP(nmlp_head, hdim, hdim_head, n_domains).to(device)
 
         # Create optimizers
         model_optimizer = optim.Adam(model.parameters(), lr=lr)
